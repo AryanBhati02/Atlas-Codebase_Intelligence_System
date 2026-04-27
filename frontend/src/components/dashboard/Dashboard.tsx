@@ -35,6 +35,7 @@ export function Dashboard() {
     isAnalyzing,
     parsedFiles,
     setAnalyzing,
+    setAnalysisProgress,
     setAnalysisResult,
     setError,
     reset,
@@ -110,6 +111,7 @@ export function Dashboard() {
           setProgressStage(stage);
           setProgressCurrent(current);
           setProgressTotal(total);
+          setAnalysisProgress({ stage, current, total });
         }
       }
     );

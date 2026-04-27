@@ -76,6 +76,7 @@ interface AppState {
 
   isLoading: boolean;
   isAnalyzing: boolean;
+  analysisProgress: { stage: string; current: number; total: number } | null;
   error: string | null;
 
 
@@ -139,6 +140,7 @@ interface AppState {
 
 
   setAnalyzing: (analyzing: boolean) => void;
+  setAnalysisProgress: (progress: { stage: string; current: number; total: number } | null) => void;
   setAnalysisResult: (parsed: ParsedFile[], graph: GraphData) => void;
 
 
@@ -251,6 +253,7 @@ const initialState = {
   isQALoading: false,
   isLoading: false,
   isAnalyzing: false,
+  analysisProgress: null,
   error: null,
   settingsPanelOpen: false,
   aiStatus: null,
@@ -323,12 +326,14 @@ export const useAppStore = create<AppState>((set) => ({
   reset: () => set(initialState),
 
   setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
+  setAnalysisProgress: (progress) => set({ analysisProgress: progress }),
   setAnalysisResult: (parsed, graph) =>
     set({
       parsedFiles: parsed,
       graphData: graph,
       isAnalyzed: true,
       isAnalyzing: false,
+      analysisProgress: null,
     }),
 
   setSelectedFile: (path) =>

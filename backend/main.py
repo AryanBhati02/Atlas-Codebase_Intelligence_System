@@ -17,6 +17,7 @@ from api.routes.analysis import router as analysis_router
 from api.routes.advanced_ai import router as advanced_ai_router
 from api.routes.git import router as git_router
 from api.routes.collaboration import router as collab_router
+from api.routes.progress import router as progress_router
 
 
 logging.basicConfig(
@@ -77,6 +78,7 @@ app.include_router(analysis_router, prefix="/api")
 app.include_router(advanced_ai_router, prefix="/api")
 app.include_router(git_router, prefix="/api")
 app.include_router(collab_router, prefix="/api")
+app.include_router(progress_router, prefix="/api")
 
 
 @app.get("/api/health")

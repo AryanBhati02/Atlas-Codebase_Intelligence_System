@@ -307,5 +307,26 @@ class ShareTokenResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: str
+    error_code: Optional[str] = None
+    session_id: Optional[str] = None
     detail: Optional[str] = None
+
+
+class ProgressResponse(BaseModel):
+    """Returned by GET /api/progress/{session_id}."""
+
+    # Rich fields
+    progress: float = 0.0
+    files_done: int = 0
+    total_files: int = 0
+    status: str = "pending"
+    partial_nodes: list = []
+    partial_edges: list = []
+    error: Optional[str] = None
+
+    # Legacy fields kept for backward compat with the frontend polling loop
+    stage: str = "pending"
+    current: int = 0
+    total: int = 0
+    done: bool = False
 

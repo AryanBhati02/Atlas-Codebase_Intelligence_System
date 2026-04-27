@@ -1,159 +1,191 @@
-"""Analyze route — triggers parse + graph + score pipeline for a session.
-Uses polling-based progress (no SSE) for maximum reliability."""
+"""
+Analyze routes — starts the parse/graph pipeline and streams live progress.
 
-import json
+POST /analyze/start/{session_id}
+    Dispatches the pipeline as a Celery task (primary path).
+    Falls back to a daemon thread if Celery/Redis is unreachable.
+    Returns immediately with {"status": "queued"|"started"|"cached"}.
+
+GET /analyze/progress/{session_id}
+    Polling endpoint. Returns the legacy format the frontend already expects:
+    {"stage", "current", "total", "done", "error"}
+
+POST /analyze/{session_id}
+    Returns cached analysis results once done=true.
+
+GET /analyze/graph/{session_id}
+    Returns the dependency graph only.
+"""
+
 import asyncio
+import json
+import logging
 import threading
-from fastapi import APIRouter, HTTPException
 from pathlib import Path
 
-from models.schemas import AnalyzeResponse, ParsedFile, GraphNode, GraphEdge, GraphData
-from core.parser.parser_service import parse_all_files
-from core.scoring.complexity_scorer import score_files
-from core.graph.graph_builder import build_graph
+from fastapi import APIRouter, HTTPException
+
+from core.session_progress import progress_store
+from models.schemas import (
+    AnalyzeResponse,
+    GraphData,
+    GraphEdge,
+    GraphNode,
+    ParsedFile,
+)
 from utils.session import get_session_dir
+
+logger = logging.getLogger("codebase-intel.routes.analyze")
 
 router = APIRouter(prefix="/analyze", tags=["Analyze"])
 
 
-_progress: dict[str, dict] = {}
-_progress_lock = threading.Lock()
+# ── Thread-fallback pipeline runner ──────────────────────────────────────────
 
+def _run_pipeline_in_thread(session_id: str, session_dir: Path) -> None:
+    """
+    Execute the async pipeline inside a daemon thread via asyncio.run().
 
-def _set_progress(session_id: str, stage: str, current: int, total: int, done=False, error: str | None = None):
-    with _progress_lock:
-        _progress[session_id] = {
-            "stage": stage,
-            "current": current,
-            "total": total,
-            "done": done,
-            "error": error,
-        }
+    Used only when Celery/Redis is unavailable.  asyncio.run() creates a
+    fresh event loop for the thread, so async primitives inside the pipeline
+    (Semaphore, gather, to_thread) all work correctly.
+    """
+    from core.pipeline import PipelineError, run_analysis_pipeline
 
-
-def _run_pipeline(session_id: str, session_dir: Path):
-    """Run the full analysis pipeline in a background thread with timeout guard."""
-    import time as _time
-    import logging as _logging
-    from config import ANALYSIS_TIMEOUT_SECONDS
-
-    log = _logging.getLogger("codebase-intel.pipeline")
-    start_time = _time.time()
-
-    def _check_timeout():
-        elapsed = _time.time() - start_time
-        if elapsed > ANALYSIS_TIMEOUT_SECONDS:
-            raise TimeoutError(
-                f"Analysis timed out after {elapsed:.0f}s "
-                f"(limit: {ANALYSIS_TIMEOUT_SECONDS}s)"
-            )
+    log = logging.getLogger(f"codebase-intel.thread.{session_id[:8]}")
+    log.info("Starting pipeline in thread fallback mode")
 
     try:
-        _set_progress(session_id, "starting", 0, 0)
+        asyncio.run(run_analysis_pipeline(session_id, session_dir))
 
-        repo_dir = session_dir / "repo"
-        if not repo_dir.exists():
-            _set_progress(session_id, "error", 0, 0, error="Repository data not found.")
-            return
-
-        
-        entries_path = session_dir / "file_entries.json"
-        if not entries_path.exists():
-            from core.ingest.file_filter import scan_directory
-            log.info(f"[{session_id}] Scanning directory...")
-            file_entries = scan_directory(repo_dir)
-            entries_data = [e.model_dump() for e in file_entries]
-            entries_path.write_text(json.dumps(entries_data), encoding="utf-8")
-        else:
-            entries_data = json.loads(entries_path.read_text(encoding="utf-8"))
-
-        total = len(entries_data)
-        log.info(f"[{session_id}] Starting pipeline for {total} files")
-        _set_progress(session_id, "parsing", 0, total)
-        _check_timeout()
-
-        def on_progress(stage: str, current: int, file_total: int):
-            _set_progress(session_id, stage, current, file_total)
-
-        
-        parsed = parse_all_files(repo_dir, entries_data, on_progress)
-        _check_timeout()
-
-        
-        _set_progress(session_id, "scoring", 0, 1)
-        parsed = score_files(parsed)
-        _set_progress(session_id, "scoring", 1, 1)
-        _check_timeout()
-
-        
-        _set_progress(session_id, "graph", 0, 1)
-        graph_data = build_graph(parsed)
-        _set_progress(session_id, "graph", 1, 1)
-        _check_timeout()
-
-        
-        _set_progress(session_id, "saving", 0, 1)
-        (session_dir / "parsed.json").write_text(json.dumps(parsed), encoding="utf-8")
-        (session_dir / "graph.json").write_text(json.dumps(graph_data), encoding="utf-8")
-
-        elapsed = _time.time() - start_time
-        log.info(f"[{session_id}] Pipeline complete: {len(parsed)} files in {elapsed:.1f}s")
-        _set_progress(session_id, "done", 1, 1, done=True)
-
+    except PipelineError as exc:
+        log.error(f"Pipeline error [{exc.error_code}]: {exc}")
+        progress_store.update_sync(
+            session_id,
+            status="error",
+            error_message=f"[{exc.error_code}] {exc}",
+        )
+    except TimeoutError as exc:
+        log.error(f"Timeout: {exc}")
+        progress_store.update_sync(session_id, status="error", error_message=str(exc))
     except MemoryError:
-        log.error(f"[{session_id}] Out of memory during analysis")
-        _set_progress(session_id, "error", 0, 0,
-                      error="Out of memory. Try a smaller repository or increase MAX_FILES_LIMIT.")
+        log.error("OOM during analysis")
+        progress_store.update_sync(
+            session_id,
+            status="error",
+            error_message="Out of memory. Try a smaller repository.",
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.error(f"Unexpected error: {exc}", exc_info=True)
+        progress_store.update_sync(
+            session_id,
+            status="error",
+            error_message=str(exc)[:300],
+        )
 
-    except TimeoutError as e:
-        log.error(f"[{session_id}] {e}")
-        _set_progress(session_id, "error", 0, 0, error=str(e))
 
-    except Exception as e:
-        log.error(f"[{session_id}] Pipeline error: {e}", exc_info=True)
-        _set_progress(session_id, "error", 0, 0, error=str(e))
-
-
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/start/{session_id}")
 async def start_analysis(session_id: str):
-    """Start analysis in background. Returns immediately. Poll /progress/{session_id} for status."""
+    """
+    Kick off the analysis pipeline for a session.
+
+    Strategy:
+      1. If results already exist on disk → mark done, return "cached".
+      2. If a pipeline is already running   → return "running".
+      3. Try to dispatch a Celery task      → return "queued".
+      4. If Celery is unavailable           → start a daemon thread, return "started".
+    """
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    
+    # Fast-path: results already on disk (e.g. page reload)
     if (session_dir / "parsed.json").exists() and (session_dir / "graph.json").exists():
-        _set_progress(session_id, "done", 1, 1, done=True)
-        return {"status": "cached"}
+        progress_store.update_sync(session_id, status="done", parsed_files=1, total_files=1)
+        logger.info(f"[{session_id}] Analysis already complete; serving from cache")
+        return {"status": "cached", "session_id": session_id}
 
-    
-    with _progress_lock:
-        existing = _progress.get(session_id)
-        if existing and not existing.get("done") and not existing.get("error"):
-            return {"status": "running"}
+    # Guard: don't spawn two pipelines for the same session
+    current = progress_store.get_sync(session_id)
+    if current and current.status not in ("done", "error", "queued", ""):
+        logger.info(f"[{session_id}] Pipeline already running (status={current.status})")
+        return {"status": "running", "session_id": session_id}
 
-    
-    _set_progress(session_id, "starting", 0, 0)
-    thread = threading.Thread(
-        target=_run_pipeline,
-        args=(session_id, session_dir),
-        daemon=True,
-    )
-    thread.start()
-    return {"status": "started"}
+    # Read source_type for logging / task metadata
+    source_type = "unknown"
+    meta_path = session_dir / "meta.json"
+    if meta_path.exists():
+        try:
+            source_type = json.loads(meta_path.read_text(encoding="utf-8")).get(
+                "source_type", "unknown"
+            )
+        except Exception:
+            pass
+
+    # Mark as queued before dispatch so the progress endpoint immediately
+    # returns a non-None entry.
+    progress_store.update_sync(session_id, status="queued")
+
+    # ── Primary: Celery task ──────────────────────────────────────────────
+    celery_ok = False
+    try:
+        from workers.tasks import run_analysis_pipeline_task
+
+        run_analysis_pipeline_task.delay(session_id, source_type)
+        celery_ok = True
+        logger.info(f"[{session_id}] Dispatched to Celery (source_type={source_type})")
+    except ImportError:
+        logger.warning(f"[{session_id}] Celery workers package not importable; using thread")
+    except Exception as exc:  # noqa: BLE001
+        # Covers kombu.exceptions.OperationalError (Redis unreachable), etc.
+        logger.warning(
+            f"[{session_id}] Celery unavailable ({type(exc).__name__}: {exc}); "
+            "using thread fallback"
+        )
+
+    # ── Fallback: daemon thread ───────────────────────────────────────────
+    if not celery_ok:
+        thread = threading.Thread(
+            target=_run_pipeline_in_thread,
+            args=(session_id, session_dir),
+            daemon=True,
+            name=f"pipeline-{session_id[:8]}",
+        )
+        thread.start()
+
+    return {
+        "status": "queued" if celery_ok else "started",
+        "session_id": session_id,
+    }
 
 
 @router.get("/progress/{session_id}")
 async def get_progress(session_id: str):
-    """Poll this endpoint for live progress. Returns stage/current/total/done/error."""
-    with _progress_lock:
-        state = _progress.get(session_id)
+    """
+    Return live pipeline progress in the format the frontend polling expects.
 
-    if state is None:
-        return {"stage": "pending", "current": 0, "total": 0, "done": False, "error": None}
-    return state
+    Format (backward-compatible with the previous threading implementation):
+      stage   — current pipeline stage string
+      current — number of files parsed so far
+      total   — total files to parse
+      done    — true when pipeline has finished successfully
+      error   — error message string, or null
+    """
+    entry = progress_store.get_sync(session_id)
+
+    if entry is None:
+        return {
+            "stage": "pending",
+            "current": 0,
+            "total": 0,
+            "done": False,
+            "error": None,
+        }
+
+    return entry.as_legacy_dict()
 
 
 @router.post("/{session_id}", response_model=AnalyzeResponse)
@@ -168,16 +200,34 @@ async def analyze_session(session_id: str):
     graph_path = session_dir / "graph.json"
 
     if not parsed_path.exists() or not graph_path.exists():
-        raise HTTPException(status_code=425, detail="Analysis not complete yet.")
+        raise HTTPException(
+            status_code=425,
+            detail="Analysis not complete yet. Poll /analyze/progress/{session_id}.",
+        )
 
-    parsed = json.loads(parsed_path.read_text(encoding="utf-8"))
-    graph_data = json.loads(graph_path.read_text(encoding="utf-8"))
+    try:
+        parsed = json.loads(parsed_path.read_text(encoding="utf-8"))
+        graph_data = json.loads(graph_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.error(f"[{session_id}] Failed to read analysis results: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Analysis results are corrupted.",
+                "error_code": "RESULTS_CORRUPT",
+                "session_id": session_id,
+            },
+        )
 
     repo_name = session_id
-    ingest_meta = session_dir / "meta.json"
-    if ingest_meta.exists():
-        meta = json.loads(ingest_meta.read_text(encoding="utf-8"))
-        repo_name = meta.get("repo_name", session_id)
+    meta_path = session_dir / "meta.json"
+    if meta_path.exists():
+        try:
+            repo_name = json.loads(
+                meta_path.read_text(encoding="utf-8")
+            ).get("repo_name", session_id)
+        except Exception:
+            pass
 
     return AnalyzeResponse(
         session_id=session_id,
@@ -193,6 +243,7 @@ async def analyze_session(session_id: str):
 
 @router.get("/graph/{session_id}", response_model=GraphData)
 async def get_graph(session_id: str):
+    """Return only the dependency graph (nodes + edges)."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -200,9 +251,24 @@ async def get_graph(session_id: str):
 
     graph_path = session_dir / "graph.json"
     if not graph_path.exists():
-        raise HTTPException(status_code=404, detail="Run analyze first.")
+        raise HTTPException(
+            status_code=404,
+            detail="Graph not built yet. Run /analyze/start/{session_id} first.",
+        )
 
-    data = json.loads(graph_path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(graph_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.error(f"[{session_id}] Failed to read graph.json: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Graph data is corrupted.",
+                "error_code": "GRAPH_CORRUPT",
+                "session_id": session_id,
+            },
+        )
+
     return GraphData(
         nodes=[GraphNode(**n) for n in data["nodes"]],
         edges=[GraphEdge(**e) for e in data["edges"]],

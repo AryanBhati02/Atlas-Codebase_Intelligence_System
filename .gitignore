@@ -1,3 +1,6 @@
+frontend/build_errors.txt
+frontend/tsconfig.tsbuildinfo
+
 # Dependencies
 node_modules/
 __pycache__/

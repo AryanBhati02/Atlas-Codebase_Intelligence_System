@@ -61,6 +61,7 @@ interface AppState {
   aiAnalysis: string | null;
   aiSource: string | null;
   isAILoading: boolean;
+  isAIStreaming: boolean;
 
 
   beginnerGuide: string | null;
@@ -147,7 +148,9 @@ interface AppState {
 
   setAIExplanation: (explanation: string | null, source?: string) => void;
   setAIAnalysis: (analysis: string | null, source?: string) => void;
+  appendAIAnalysis: (chunk: string) => void;
   setAILoading: (loading: boolean) => void;
+  setAIStreaming: (streaming: boolean) => void;
 
 
   setBeginnerGuide: (guide: string, topFiles: { path: string; complexity_score: number }[], source: string) => void;
@@ -239,6 +242,7 @@ const initialState = {
   aiAnalysis: null,
   aiSource: null,
   isAILoading: false,
+  isAIStreaming: false,
   beginnerGuide: null,
   beginnerTopFiles: [],
   beginnerSource: null,
@@ -340,8 +344,11 @@ export const useAppStore = create<AppState>((set) => ({
   setAIExplanation: (explanation, source) =>
     set({ aiExplanation: explanation, aiSource: source || null }),
   setAIAnalysis: (analysis, source) =>
-    set({ aiAnalysis: analysis, aiSource: source || null }),
+    set({ aiAnalysis: analysis, aiSource: source || null, isAIStreaming: false }),
+  appendAIAnalysis: (chunk) =>
+    set((state) => ({ aiAnalysis: (state.aiAnalysis ?? "") + chunk })),
   setAILoading: (loading) => set({ isAILoading: loading }),
+  setAIStreaming: (streaming) => set({ isAIStreaming: streaming }),
 
   setBeginnerGuide: (guide, topFiles, source) =>
     set({

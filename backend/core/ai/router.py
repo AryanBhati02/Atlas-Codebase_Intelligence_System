@@ -2,19 +2,20 @@
 AI Router — orchestrates prompt routing across providers with fallback chain.
 
 Priority chain: Cache → Ollama (local) → Groq → Gemini → Mistral → HuggingFace
+Each provider has both a blocking caller (route_prompt) and an async-generator
+streaming caller (route_stream) that yields tokens as they arrive.
 Tracks per-provider stats (request count, latency) in a SQLite stats table.
 Automatically skips exhausted (rate-limited) providers.
 """
 
+import json
 import time
 import logging
 import sqlite3
 import threading
-
-logger = logging.getLogger("codebase-intel.router")
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 import httpx
 
@@ -25,14 +26,22 @@ from core.ai.free_api import (
     call_huggingface,
     is_exhausted,
     has_key,
+    get_key,
+    mark_exhausted,
+    PROVIDER_MODELS,
     RateLimitError,
     ProviderError,
     reload_keys as _reload_provider_keys,
 )
 
+logger = logging.getLogger("codebase-intel.router")
 
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+# ---------------------------------------------------------------------------
+# Ollama config
+# ---------------------------------------------------------------------------
+
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 _ollama_model = "phi3:mini"
 OLLAMA_MODEL = _ollama_model
 OLLAMA_TIMEOUT = 60.0
@@ -50,19 +59,18 @@ def set_ollama_model(model: str) -> None:
 
 PROVIDER_CHAIN: list[str] = ["ollama", "groq", "gemini", "mistral", "huggingface"]
 
-
 _prefer_local: bool = True
 
-
 _STATS_DB_PATH = Path(__file__).resolve().parent.parent.parent / "ai_stats.db"
-
 
 _stats_lock = threading.Lock()
 
 
+# ---------------------------------------------------------------------------
+# Stats DB
+# ---------------------------------------------------------------------------
 
 def _get_stats_db() -> sqlite3.Connection:
-    """Get or create the global stats database."""
     conn = sqlite3.connect(str(_STATS_DB_PATH))
     conn.execute("""
         CREATE TABLE IF NOT EXISTS provider_stats (
@@ -79,7 +87,6 @@ def _get_stats_db() -> sqlite3.Connection:
 
 
 def _log_stat(provider: str, latency_ms: float, success: bool) -> None:
-    """Log a provider call result to the stats database."""
     try:
         with _stats_lock:
             conn = _get_stats_db()
@@ -94,10 +101,6 @@ def _log_stat(provider: str, latency_ms: float, success: bool) -> None:
 
 
 def get_provider_stats() -> dict[str, dict]:
-    """
-    Get aggregated stats per provider.
-    Returns: { provider: { requests: int, successes: int, avg_latency_ms: float } }
-    """
     result: dict[str, dict] = {}
     try:
         conn = _get_stats_db()
@@ -111,7 +114,6 @@ def get_provider_stats() -> dict[str, dict]:
             GROUP BY provider
         """).fetchall()
         conn.close()
-
         for row in rows:
             result[row[0]] = {
                 "requests_today": row[1],
@@ -120,17 +122,13 @@ def get_provider_stats() -> dict[str, dict]:
             }
     except Exception as e:
         logger.warning(f"Failed to read provider stats: {e}")
-
-    
     for p in PROVIDER_CHAIN:
         if p not in result:
             result[p] = {"requests_today": 0, "successes": 0, "avg_latency_ms": 0}
-
     return result
 
 
 def clear_stats() -> None:
-    """Clear all provider stats."""
     try:
         conn = _get_stats_db()
         conn.execute("DELETE FROM provider_stats")
@@ -140,34 +138,30 @@ def clear_stats() -> None:
         logger.warning(f"Failed to clear stats: {e}")
 
 
-
+# ---------------------------------------------------------------------------
+# Provider ordering
+# ---------------------------------------------------------------------------
 
 def set_prefer_local(prefer: bool) -> None:
-    """Set whether to prefer local Ollama over API providers."""
     global _prefer_local
     _prefer_local = prefer
 
 
 def get_prefer_local() -> bool:
-    """Get current local preference setting."""
     return _prefer_local
 
 
 def get_ordered_providers() -> list[str]:
-    """Get the provider chain in current priority order."""
     if _prefer_local:
         return list(PROVIDER_CHAIN)
-    else:
-        
-        chain = [p for p in PROVIDER_CHAIN if p != "ollama"]
-        chain.append("ollama")
-        return chain
+    chain = [p for p in PROVIDER_CHAIN if p != "ollama"]
+    chain.append("ollama")
+    return chain
 
 
 def _is_provider_available(provider: str) -> bool:
-    """Check if a provider is currently usable."""
     if provider == "ollama":
-        return True  
+        return True
     if is_exhausted(provider):
         return False
     if not has_key(provider):
@@ -175,10 +169,11 @@ def _is_provider_available(provider: str) -> bool:
     return True
 
 
-
+# ---------------------------------------------------------------------------
+# Blocking callers
+# ---------------------------------------------------------------------------
 
 async def _call_ollama(prompt: str) -> str:
-    """Call Ollama local inference."""
     model = get_ollama_model()
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
         resp = await client.post(OLLAMA_URL, json={
@@ -194,8 +189,6 @@ async def _call_ollama(prompt: str) -> str:
         raise ProviderError(f"Ollama returned {resp.status_code}")
 
 
-
-
 _CALLERS = {
     "ollama": _call_ollama,
     "groq": call_groq,
@@ -208,51 +201,252 @@ _CALLERS = {
 async def route_prompt(prompt: str) -> tuple[Optional[str], str]:
     """
     Route a prompt through the provider chain with automatic fallback.
-
-    Returns: (response_text, provider_name) on success.
-             (None, "none") if all providers failed.
-
-    The caller should fall back to template-based responses when (None, "none")
-    is returned.
+    Returns (response_text, provider_name) on success, (None, "none") if all fail.
     """
     chain = get_ordered_providers()
-    last_error = ""
+    for provider in chain:
+        if not _is_provider_available(provider):
+            continue
+        caller = _CALLERS.get(provider)
+        if not caller:
+            continue
+        start = time.time()
+        try:
+            result = await caller(prompt)
+            _log_stat(provider, (time.time() - start) * 1000, success=True)
+            logger.info(f"route_prompt: served by {provider}")
+            return result, provider
+        except RateLimitError:
+            _log_stat(provider, (time.time() - start) * 1000, success=False)
+            continue
+        except Exception as e:
+            _log_stat(provider, (time.time() - start) * 1000, success=False)
+            logger.debug(f"route_prompt {provider} failed: {e}")
+            continue
+    return None, "none"
+
+
+# ---------------------------------------------------------------------------
+# Streaming generators — one per provider
+# ---------------------------------------------------------------------------
+
+async def _stream_ollama(prompt: str) -> AsyncGenerator[str, None]:
+    """Stream tokens from local Ollama via NDJSON."""
+    model = get_ollama_model()
+    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+        async with client.stream(
+            "POST", OLLAMA_URL,
+            json={"model": model, "prompt": prompt, "stream": True},
+        ) as resp:
+            if resp.status_code != 200:
+                raise ProviderError(f"Ollama returned {resp.status_code}")
+            async for line in resp.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    token = data.get("response", "")
+                    if token:
+                        yield token
+                    if data.get("done", False):
+                        return
+                except json.JSONDecodeError:
+                    continue
+
+
+async def _stream_groq(prompt: str) -> AsyncGenerator[str, None]:
+    """Stream tokens from Groq via OpenAI-compatible SSE."""
+    key = get_key("groq")
+    if not key:
+        raise ProviderError("Groq API key not configured")
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        async with client.stream(
+            "POST",
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": PROVIDER_MODELS["groq"],
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1500,
+                "temperature": 0.3,
+                "stream": True,
+            },
+        ) as resp:
+            if resp.status_code == 429:
+                mark_exhausted("groq")
+                raise RateLimitError("Groq rate limited")
+            if resp.status_code != 200:
+                text = await resp.aread()
+                raise ProviderError(f"Groq returned {resp.status_code}: {text[:120]}")
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str.strip() == "[DONE]":
+                    return
+                try:
+                    data = json.loads(data_str)
+                    delta = data["choices"][0]["delta"].get("content", "")
+                    if delta:
+                        yield delta
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+
+async def _stream_gemini(prompt: str) -> AsyncGenerator[str, None]:
+    """Stream tokens from Gemini via SSE (alt=sse parameter)."""
+    key = get_key("gemini")
+    if not key:
+        raise ProviderError("Gemini API key not configured")
+    model = PROVIDER_MODELS["gemini"]
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        async with client.stream(
+            "POST", url,
+            params={"key": key, "alt": "sse"},
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1500},
+            },
+        ) as resp:
+            if resp.status_code == 429:
+                mark_exhausted("gemini")
+                raise RateLimitError("Gemini rate limited")
+            if resp.status_code != 200:
+                raise ProviderError(f"Gemini returned {resp.status_code}")
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    data = json.loads(line[6:])
+                    parts = (
+                        data.get("candidates", [{}])[0]
+                        .get("content", {})
+                        .get("parts", [])
+                    )
+                    if parts:
+                        text = parts[0].get("text", "")
+                        if text:
+                            yield text
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
+
+
+async def _stream_mistral(prompt: str) -> AsyncGenerator[str, None]:
+    """Stream tokens from Mistral via OpenAI-compatible SSE."""
+    key = get_key("mistral")
+    if not key:
+        raise ProviderError("Mistral API key not configured")
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        async with client.stream(
+            "POST",
+            "https://api.mistral.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": PROVIDER_MODELS["mistral"],
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1500,
+                "temperature": 0.3,
+                "stream": True,
+            },
+        ) as resp:
+            if resp.status_code == 429:
+                mark_exhausted("mistral")
+                raise RateLimitError("Mistral rate limited")
+            if resp.status_code != 200:
+                raise ProviderError(f"Mistral returned {resp.status_code}")
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str.strip() == "[DONE]":
+                    return
+                try:
+                    data = json.loads(data_str)
+                    delta = data["choices"][0]["delta"].get("content", "")
+                    if delta:
+                        yield delta
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+
+async def _stream_huggingface(prompt: str) -> AsyncGenerator[str, None]:
+    """HuggingFace inference API — collect full response and yield as single chunk."""
+    result = await call_huggingface(prompt)
+    if result:
+        yield result
+
+
+_STREAM_CALLERS: dict[str, object] = {
+    "ollama": _stream_ollama,
+    "groq": _stream_groq,
+    "gemini": _stream_gemini,
+    "mistral": _stream_mistral,
+    "huggingface": _stream_huggingface,
+}
+
+
+# ---------------------------------------------------------------------------
+# Unified streaming router
+# ---------------------------------------------------------------------------
+
+async def route_stream(prompt: str) -> AsyncGenerator[str, None]:
+    """
+    Route a prompt through the provider chain and stream tokens as they arrive.
+
+    Tries providers in priority order. Falls back to the next provider if
+    the current one raises an exception BEFORE yielding any tokens.
+    Once tokens have started flowing, errors end the stream silently.
+    Yields at least one fallback message if every provider fails.
+    """
+    chain = get_ordered_providers()
 
     for provider in chain:
         if not _is_provider_available(provider):
             continue
 
-        caller = _CALLERS.get(provider)
-        if not caller:
+        streamer = _STREAM_CALLERS.get(provider)
+        if not streamer:
             continue
 
+        logger.info(f"route_stream: attempting {provider}")
         start = time.time()
+        chunks_sent = 0
+
         try:
-            result = await caller(prompt)
-            latency = (time.time() - start) * 1000
-            _log_stat(provider, latency, success=True)
-            return result, provider
+            async for chunk in streamer(prompt):  # type: ignore[attr-defined]
+                yield chunk
+                chunks_sent += 1
+
+            _log_stat(provider, (time.time() - start) * 1000, success=True)
+            logger.info(f"route_stream: completed via {provider} ({chunks_sent} chunks)")
+            return
 
         except RateLimitError:
-            latency = (time.time() - start) * 1000
-            _log_stat(provider, latency, success=False)
-            last_error = f"{provider} rate limited"
-            continue  
-
-        except ProviderError as e:
-            latency = (time.time() - start) * 1000
-            _log_stat(provider, latency, success=False)
-            last_error = f"{provider}: {str(e)[:80]}"
+            _log_stat(provider, (time.time() - start) * 1000, success=False)
+            if chunks_sent > 0:
+                return  # Already streaming — can't switch providers mid-response
+            logger.warning(f"route_stream: {provider} rate-limited, trying next")
             continue
 
         except Exception as e:
-            latency = (time.time() - start) * 1000
-            _log_stat(provider, latency, success=False)
-            last_error = f"{provider}: {str(e)[:80]}"
+            _log_stat(provider, (time.time() - start) * 1000, success=False)
+            if chunks_sent > 0:
+                return
+            logger.warning(f"route_stream: {provider} failed ({e}), trying next")
             continue
 
-    return None, "none"
+    # All providers failed with no output
+    yield (
+        "\n\n*No AI provider available. Configure API keys in Settings "
+        "(Groq, Gemini, Mistral, or HuggingFace) or start Ollama locally.*"
+    )
 
+
+# ---------------------------------------------------------------------------
+# Key reload
+# ---------------------------------------------------------------------------
 
 def reload_keys() -> None:
     """Hot-reload API keys from .env (delegates to free_api module)."""

@@ -1,9 +1,4 @@
-
-
-
-
-
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,7 +6,6 @@ import {
   FileText,
   RefreshCw,
   Shield,
-  Loader2,
   AlertTriangle,
   CheckCircle2,
   Copy,
@@ -21,13 +15,28 @@ import {
   GitPullRequest,
   Download,
   ShieldCheck,
+  Square,
 } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
-import { generateReadme, getRefactorSuggestions, runSecurityScan, generatePRReview } from "../../api/api";
+import { runSecurityScan } from "../../api/api";
+import { streamAI } from "../../api/aiStream";
+import type { StreamControl } from "../../api/aiStream";
 
 type AdvancedTab = "readme" | "refactor" | "security" | "pr-review";
 
-function SourceBadge({ source }: { source: string | null }) {
+// ---------------------------------------------------------------------------
+// Shared UI
+// ---------------------------------------------------------------------------
+
+function SourceBadge({ source, isStreaming }: { source: string | null; isStreaming?: boolean }) {
+  if (isStreaming) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/15 animate-pulse">
+        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-ping inline-block" />
+        Streaming…
+      </span>
+    );
+  }
   if (!source) return null;
   if (source === "ollama") {
     return (
@@ -36,7 +45,7 @@ function SourceBadge({ source }: { source: string | null }) {
       </span>
     );
   }
-  if (source === "fallback") {
+  if (source === "fallback" || source === "template") {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-slate-500/10 text-slate-400 border border-slate-500/15">
         Template
@@ -50,57 +59,91 @@ function SourceBadge({ source }: { source: string | null }) {
   );
 }
 
+function StreamCursor() {
+  return (
+    <motion.span
+      className="inline-block w-[2px] h-[1em] bg-accent-cyan/80 ml-0.5 align-middle"
+      animate={{ opacity: [1, 1, 0, 0] }}
+      transition={{ duration: 0.8, repeat: Infinity, times: [0, 0.5, 0.5, 1] }}
+    />
+  );
+}
 
+function StopButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="p-1 rounded transition-colors text-slate-400 hover:text-red-400"
+      title="Stop streaming"
+    >
+      <Square className="w-3 h-3" />
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ReadmeTab
+// ---------------------------------------------------------------------------
 
 function ReadmeTab() {
-  const {
-    sessionId, readmeData, isReadmeLoading,
-    setReadmeData, setReadmeLoading,
-  } = useAppStore();
+  const { sessionId, readmeData, setReadmeData } = useAppStore();
+  const [content, setContent] = useState(readmeData?.readme || "");
+  const [isStreaming, setIsStreaming] = useState(false);
   const [copied, setCopied] = useState(false);
+  const ctrlRef = useRef<StreamControl | null>(null);
 
-  const handleDownload = useCallback(() => {
-    if (!readmeData?.readme) return;
-    const blob = new Blob([readmeData.readme], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "README.md";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  useEffect(() => {
+    if (readmeData?.readme) setContent(readmeData.readme);
   }, [readmeData]);
 
-  const handleGenerate = useCallback(async () => {
-    if (!sessionId || isReadmeLoading) return;
-    setReadmeLoading(true);
-    try {
-      const data = await generateReadme(sessionId);
-      setReadmeData(data);
-    } catch {
-      setReadmeLoading(false);
-    }
-  }, [sessionId, isReadmeLoading, setReadmeLoading, setReadmeData]);
+  const handleGenerate = useCallback(() => {
+    if (!sessionId || isStreaming) return;
+    setContent("");
+    setIsStreaming(true);
+    let accumulated = "";
+    const ctrl = streamAI(
+      "/ai/readme/stream",
+      { session_id: sessionId },
+      {
+        onChunk: (text) => {
+          accumulated += text;
+          setContent(accumulated);
+        },
+        onDone: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+          if (accumulated) setReadmeData({ readme: accumulated, source: "ai" });
+        },
+        onError: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+        },
+      }
+    );
+    ctrlRef.current = ctrl;
+  }, [sessionId, isStreaming, setReadmeData]);
+
+  const handleCancel = () => { ctrlRef.current?.cancel(); setIsStreaming(false); };
+
+  const handleDownload = useCallback(() => {
+    if (!content) return;
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "README.md";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  }, [content]);
 
   const handleCopy = useCallback(() => {
-    if (readmeData?.readme) {
-      navigator.clipboard.writeText(readmeData.readme);
+    if (content) {
+      navigator.clipboard.writeText(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [readmeData]);
+  }, [content]);
 
-  if (isReadmeLoading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-accent-cyan/60" />
-        <p className="text-[10px] animate-pulse" style={{ color: "var(--text-muted)" }}>Generating README from codebase…</p>
-      </div>
-    );
-  }
-
-  if (!readmeData) {
+  if (!content && !isStreaming) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-12">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3"
@@ -108,11 +151,12 @@ function ReadmeTab() {
           <FileText className="w-5 h-5 text-accent-cyan/50" />
         </div>
         <p className="text-[11px] mb-1" style={{ color: "var(--text-secondary)" }}>Auto README Generator</p>
-        <p className="text-[9px] mb-4" style={{ color: "var(--text-muted)" }}>Generate a professional README from your codebase structure</p>
+        <p className="text-[9px] mb-4" style={{ color: "var(--text-muted)" }}>
+          Generate a professional README from your codebase structure
+        </p>
         <motion.button
           onClick={handleGenerate}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
+          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-medium
             bg-accent-cyan/[0.08] text-accent-cyan/80 border border-accent-cyan/15
             hover:bg-accent-cyan/15 transition-all duration-300"
@@ -126,76 +170,100 @@ function ReadmeTab() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2 shrink-0">
-        <SourceBadge source={readmeData.source} />
+        <SourceBadge source={content ? "ai" : null} isStreaming={isStreaming} />
         <div className="ml-auto flex items-center gap-1">
-          <motion.button
-            onClick={handleDownload}
-            whileTap={{ scale: 0.9 }}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-medium transition-colors"
-            style={{
-              color: "var(--accent-cyan)",
-              background: "rgba(0, 200, 200, 0.08)",
-              border: "1px solid rgba(0, 200, 200, 0.15)",
-            }}
-            title="Download as README.md"
-          >
-            <Download className="w-3 h-3" />
-            Download
-          </motion.button>
-          <motion.button
-            onClick={handleCopy}
-            whileTap={{ scale: 0.9 }}
-            className="p-1 rounded transition-colors"
-            style={{ color: "var(--text-muted)" }}
-            title="Copy to clipboard"
-          >
-            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-          </motion.button>
-          <motion.button
-            onClick={handleGenerate}
-            whileTap={{ scale: 0.9 }}
-            className="p-1 rounded transition-colors"
-            style={{ color: "var(--text-muted)" }}
-            title="Regenerate"
-          >
-            <RefreshCw className="w-3 h-3" />
-          </motion.button>
+          {content && (
+            <>
+              <motion.button onClick={handleDownload} whileTap={{ scale: 0.9 }}
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-medium transition-colors"
+                style={{ color: "var(--accent-cyan)", background: "rgba(0,200,200,0.08)", border: "1px solid rgba(0,200,200,0.15)" }}
+              >
+                <Download className="w-3 h-3" /> Download
+              </motion.button>
+              <motion.button onClick={handleCopy} whileTap={{ scale: 0.9 }}
+                className="p-1 rounded transition-colors" style={{ color: "var(--text-muted)" }}
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              </motion.button>
+            </>
+          )}
+          {isStreaming
+            ? <StopButton onClick={handleCancel} />
+            : (
+              <motion.button onClick={handleGenerate} whileTap={{ scale: 0.9 }}
+                className="p-1 rounded transition-colors" style={{ color: "var(--text-muted)" }} title="Regenerate"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </motion.button>
+            )
+          }
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-2 ai-content">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{readmeData.readme}</ReactMarkdown>
+        {content && <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>}
+        {isStreaming && (
+          content
+            ? <StreamCursor />
+            : <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-2"><StreamCursor /><span>Generating README…</span></div>
+        )}
       </div>
     </div>
   );
 }
 
-
+// ---------------------------------------------------------------------------
+// RefactorTab
+// ---------------------------------------------------------------------------
 
 function RefactorTab() {
-  const {
-    sessionId, selectedFile, refactorData, isRefactorLoading,
-    setRefactorData, setRefactorLoading,
-  } = useAppStore();
+  const { sessionId, selectedFile, refactorData, setRefactorData } = useAppStore();
+  const [content, setContent] = useState(
+    refactorData && refactorData.file_path === selectedFile ? refactorData.suggestions : ""
+  );
+  const [isStreaming, setIsStreaming] = useState(false);
+  const ctrlRef = useRef<StreamControl | null>(null);
+  const streamedFileRef = useRef<string | null>(null);
 
-  const handleRefactor = useCallback(async () => {
-    if (!sessionId || !selectedFile || isRefactorLoading) return;
-    setRefactorLoading(true);
-    try {
-      const data = await getRefactorSuggestions(sessionId, selectedFile);
-      setRefactorData(data);
-    } catch {
-      setRefactorLoading(false);
+  // Reset when selected file changes
+  useEffect(() => {
+    if (selectedFile !== streamedFileRef.current) {
+      setContent(
+        refactorData && refactorData.file_path === selectedFile ? refactorData.suggestions : ""
+      );
+      setIsStreaming(false);
+      ctrlRef.current?.cancel();
     }
-  }, [sessionId, selectedFile, isRefactorLoading, setRefactorLoading, setRefactorData]);
+  }, [selectedFile, refactorData]);
 
-  if (isRefactorLoading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-accent-gold/60" />
-        <p className="text-[10px] animate-pulse" style={{ color: "var(--text-muted)" }}>Analyzing refactor opportunities…</p>
-      </div>
+  const handleRefactor = useCallback(() => {
+    if (!sessionId || !selectedFile || isStreaming) return;
+    streamedFileRef.current = selectedFile;
+    setContent("");
+    setIsStreaming(true);
+    let accumulated = "";
+    const ctrl = streamAI(
+      "/ai/refactor/stream",
+      { session_id: sessionId, file_path: selectedFile },
+      {
+        onChunk: (text) => {
+          accumulated += text;
+          setContent(accumulated);
+        },
+        onDone: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+          if (accumulated) setRefactorData({ file_path: selectedFile, suggestions: accumulated, source: "ai" });
+        },
+        onError: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+        },
+      }
     );
-  }
+    ctrlRef.current = ctrl;
+  }, [sessionId, selectedFile, isStreaming, setRefactorData]);
+
+  const handleCancel = () => { ctrlRef.current?.cancel(); setIsStreaming(false); };
 
   if (!selectedFile) {
     return (
@@ -210,23 +278,24 @@ function RefactorTab() {
     );
   }
 
-  if (!refactorData || refactorData.file_path !== selectedFile) {
+  if (!content && !isStreaming) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-12">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3"
           style={{ background: "var(--accent-gold-subtle)", border: "1px solid var(--accent-gold-subtle)" }}>
           <RefreshCw className="w-5 h-5 text-accent-gold/50" />
         </div>
-        <p className="text-[10px] mb-1 font-mono truncate max-w-[200px]" style={{ color: "var(--text-muted)" }}>{selectedFile}</p>
+        <p className="text-[10px] mb-1 font-mono truncate max-w-[200px]" style={{ color: "var(--text-muted)" }}>
+          {selectedFile}
+        </p>
         <motion.button
           onClick={handleRefactor}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
+          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-medium mt-3
             bg-accent-gold/[0.08] text-accent-gold/80 border border-accent-gold/15
             hover:bg-accent-gold/15 transition-all duration-300"
         >
-          <RefreshCw className="w-3 h-3" /> Analyze Refactoring
+          <RefreshCw className="w-3 h-3" /> Analyse Refactoring
         </motion.button>
       </div>
     );
@@ -235,23 +304,39 @@ function RefactorTab() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2 shrink-0">
-        <SourceBadge source={refactorData.source} />
-        <span className="text-[9px] font-mono truncate" style={{ color: "var(--text-muted)" }}>{refactorData.file_path}</span>
+        <SourceBadge source={content ? "ai" : null} isStreaming={isStreaming} />
+        <span className="text-[9px] font-mono truncate" style={{ color: "var(--text-muted)" }}>{selectedFile}</span>
+        <div className="ml-auto">
+          {isStreaming
+            ? <StopButton onClick={handleCancel} />
+            : (
+              <motion.button onClick={handleRefactor} whileTap={{ scale: 0.9 }}
+                className="p-1 rounded transition-colors" style={{ color: "var(--text-muted)" }} title="Re-analyse"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </motion.button>
+            )
+          }
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-2 ai-content">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{refactorData.suggestions}</ReactMarkdown>
+        {content && <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>}
+        {isStreaming && (
+          content
+            ? <StreamCursor />
+            : <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-2"><StreamCursor /><span>Analysing…</span></div>
+        )}
       </div>
     </div>
   );
 }
 
-
+// ---------------------------------------------------------------------------
+// SecurityTab — structured scan (not streamed) + structured display
+// ---------------------------------------------------------------------------
 
 function SecurityTab() {
-  const {
-    sessionId, securityData, isSecurityLoading,
-    setSecurityData, setSecurityLoading,
-  } = useAppStore();
+  const { sessionId, securityData, setSecurityData, setSecurityLoading, isSecurityLoading } = useAppStore();
 
   const handleScan = useCallback(async () => {
     if (!sessionId || isSecurityLoading) return;
@@ -267,8 +352,10 @@ function SecurityTab() {
   if (isSecurityLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-red-400/60" />
-        <p className="text-[10px] animate-pulse" style={{ color: "var(--text-muted)" }}>Scanning for security issues…</p>
+        <div className="flex items-center gap-2 text-[11px] text-slate-500">
+          <StreamCursor />
+          <span>Scanning for security issues…</span>
+        </div>
       </div>
     );
   }
@@ -277,15 +364,16 @@ function SecurityTab() {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-12">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3"
-          style={{ background: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.1)" }}>
+          style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.1)" }}>
           <Shield className="w-5 h-5 text-red-400/50" />
         </div>
         <p className="text-[11px] mb-1" style={{ color: "var(--text-secondary)" }}>Security Scanner</p>
-        <p className="text-[9px] mb-4" style={{ color: "var(--text-muted)" }}>Detect hardcoded secrets, injection risks, and vulnerabilities</p>
+        <p className="text-[9px] mb-4" style={{ color: "var(--text-muted)" }}>
+          Detect hardcoded secrets, injection risks, and vulnerabilities
+        </p>
         <motion.button
           onClick={handleScan}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
+          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-medium
             bg-red-500/[0.08] text-red-400/80 border border-red-500/15
             hover:bg-red-500/15 transition-all duration-300"
@@ -297,16 +385,14 @@ function SecurityTab() {
   }
 
   const { summary, findings, recommendations } = securityData;
-  const scoreColor = summary.security_score >= 0.8 ? "text-emerald-400" :
-    summary.security_score >= 0.5 ? "text-amber-400" : "text-red-400";
-
+  const scoreColor = summary.security_score >= 0.8 ? "text-emerald-400"
+    : summary.security_score >= 0.5 ? "text-amber-400" : "text-red-400";
   const severityColors: Record<string, string> = {
     critical: "bg-red-500/15 text-red-400 border-red-500/20",
     high: "bg-orange-500/15 text-orange-400 border-orange-500/20",
     medium: "bg-amber-500/15 text-amber-400 border-amber-500/20",
     low: "bg-slate-500/15 text-slate-400 border-slate-500/20",
   };
-
   const priorityColors: Record<string, { bg: string; text: string; border: string }> = {
     critical: { bg: "rgba(239,68,68,0.06)", text: "#f87171", border: "rgba(239,68,68,0.15)" },
     high: { bg: "rgba(249,115,22,0.06)", text: "#fb923c", border: "rgba(249,115,22,0.15)" },
@@ -319,38 +405,30 @@ function SecurityTab() {
       <div className="px-3 py-2.5 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            {summary.total_findings === 0 ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-            )}
+            {summary.total_findings === 0
+              ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              : <AlertTriangle className="w-4 h-4 text-amber-400" />
+            }
             <span className="text-[11px] font-medium" style={{ color: "var(--text-primary)" }}>
               {summary.total_findings === 0 ? "No issues found" : `${summary.total_findings} findings`}
             </span>
           </div>
-          <span className={`text-[11px] font-bold tabular-nums ${scoreColor}`}>
-            {(summary.security_score * 100).toFixed(0)}%
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-[11px] font-bold tabular-nums ${scoreColor}`}>
+              {(summary.security_score * 100).toFixed(0)}%
+            </span>
+            <motion.button onClick={handleScan} whileTap={{ scale: 0.9 }}
+              className="p-1 rounded transition-colors" style={{ color: "var(--text-muted)" }} title="Rescan"
+            >
+              <RefreshCw className="w-3 h-3" />
+            </motion.button>
+          </div>
         </div>
         <div className="flex gap-1.5">
-          {summary.critical > 0 && (
-            <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-red-500/15 text-red-400">
-              {summary.critical} CRITICAL
-            </span>
-          )}
-          {summary.high > 0 && (
-            <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-orange-500/15 text-orange-400">
-              {summary.high} HIGH
-            </span>
-          )}
-          {summary.medium > 0 && (
-            <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-amber-500/15 text-amber-400">
-              {summary.medium} MED
-            </span>
-          )}
-          <span className="text-[8px] ml-auto" style={{ color: "var(--text-muted)" }}>
-            {summary.files_scanned} files scanned
-          </span>
+          {summary.critical > 0 && <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-red-500/15 text-red-400">{summary.critical} CRITICAL</span>}
+          {summary.high > 0 && <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-orange-500/15 text-orange-400">{summary.high} HIGH</span>}
+          {summary.medium > 0 && <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-amber-500/15 text-amber-400">{summary.medium} MED</span>}
+          <span className="text-[8px] ml-auto" style={{ color: "var(--text-muted)" }}>{summary.files_scanned} files scanned</span>
         </div>
       </div>
 
@@ -371,14 +449,11 @@ function SecurityTab() {
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-medium" style={{ color: "var(--text-primary)" }}>{f.title}</p>
                     <p className="text-[9px] font-mono truncate mt-0.5" style={{ color: "var(--text-muted)" }}>{f.file}:{f.line}</p>
-                    {f.fix && (
-                      <p className="text-[9px] text-accent-cyan/60 mt-1">→ {f.fix}</p>
-                    )}
+                    {f.fix && <p className="text-[9px] text-accent-cyan/60 mt-1">→ {f.fix}</p>}
                   </div>
                 </div>
               </div>
             ))}
-
             {recommendations && recommendations.length > 0 && (
               <div className="px-3 pt-3 pb-2">
                 <div className="flex items-center gap-1.5 mb-2">
@@ -391,26 +466,15 @@ function SecurityTab() {
                   {recommendations.map((rec, i) => {
                     const pc = priorityColors[rec.priority] || priorityColors.medium;
                     return (
-                      <div
-                        key={i}
-                        className="rounded-lg overflow-hidden"
-                        style={{ background: pc.bg, border: `1px solid ${pc.border}` }}
-                      >
+                      <div key={i} className="rounded-lg overflow-hidden"
+                        style={{ background: pc.bg, border: `1px solid ${pc.border}` }}>
                         <div className="px-3 py-2">
                           <div className="flex items-center gap-2 mb-1">
-                            <span
-                              className="px-1.5 py-0.5 rounded text-[7px] font-bold uppercase"
-                              style={{ background: pc.border, color: pc.text }}
-                            >
-                              {rec.priority}
-                            </span>
-                            <span className="text-[10px] font-medium" style={{ color: pc.text }}>
-                              {rec.title}
-                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[7px] font-bold uppercase"
+                              style={{ background: pc.border, color: pc.text }}>{rec.priority}</span>
+                            <span className="text-[10px] font-medium" style={{ color: pc.text }}>{rec.title}</span>
                           </div>
-                          <p className="text-[9px] mb-1.5" style={{ color: "var(--text-muted)" }}>
-                            {rec.description}
-                          </p>
+                          <p className="text-[9px] mb-1.5" style={{ color: "var(--text-muted)" }}>{rec.description}</p>
                           {rec.steps && rec.steps.length > 0 && (
                             <ul className="space-y-0.5">
                               {rec.steps.map((step, si) => (
@@ -435,45 +499,60 @@ function SecurityTab() {
   );
 }
 
-
+// ---------------------------------------------------------------------------
+// PRReviewTab
+// ---------------------------------------------------------------------------
 
 function PRReviewTab() {
-  const {
-    sessionId, selectedFile, prReviewData, isPRReviewLoading,
-    setPRReviewData, setPRReviewLoading,
-  } = useAppStore();
+  const { sessionId, selectedFile, prReviewData, setPRReviewData } = useAppStore();
+  const [content, setContent] = useState(prReviewData?.review || "");
+  const [isStreaming, setIsStreaming] = useState(false);
   const [copied, setCopied] = useState(false);
+  const ctrlRef = useRef<StreamControl | null>(null);
 
-  const handleGenerate = useCallback(async () => {
-    if (!sessionId || isPRReviewLoading) return;
-    setPRReviewLoading(true);
-    try {
-      const filePaths = selectedFile ? [selectedFile] : [];
-      const data = await generatePRReview(sessionId, filePaths);
-      setPRReviewData(data);
-    } catch {
-      setPRReviewLoading(false);
-    }
-  }, [sessionId, selectedFile, isPRReviewLoading, setPRReviewLoading, setPRReviewData]);
+  useEffect(() => {
+    if (prReviewData?.review) setContent(prReviewData.review);
+  }, [prReviewData]);
+
+  const handleGenerate = useCallback(() => {
+    if (!sessionId || isStreaming) return;
+    setContent("");
+    setIsStreaming(true);
+    const filePaths = selectedFile ? selectedFile : "";
+    let accumulated = "";
+    const ctrl = streamAI(
+      "/ai/pr-review/stream",
+      { session_id: sessionId, file_paths: filePaths },
+      {
+        onChunk: (text) => {
+          accumulated += text;
+          setContent(accumulated);
+        },
+        onDone: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+          if (accumulated) setPRReviewData({ review: accumulated, source: "ai" });
+        },
+        onError: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+        },
+      }
+    );
+    ctrlRef.current = ctrl;
+  }, [sessionId, selectedFile, isStreaming, setPRReviewData]);
+
+  const handleCancel = () => { ctrlRef.current?.cancel(); setIsStreaming(false); };
 
   const handleCopy = useCallback(() => {
-    if (prReviewData?.review) {
-      navigator.clipboard.writeText(prReviewData.review);
+    if (content) {
+      navigator.clipboard.writeText(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [prReviewData]);
+  }, [content]);
 
-  if (isPRReviewLoading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-accent-purple/60" />
-        <p className="text-[10px] animate-pulse" style={{ color: "var(--text-muted)" }}>Generating PR review…</p>
-      </div>
-    );
-  }
-
-  if (!prReviewData) {
+  if (!content && !isStreaming) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-12">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3"
@@ -491,8 +570,7 @@ function PRReviewTab() {
         </p>
         <motion.button
           onClick={handleGenerate}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
+          whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-medium
             bg-accent-purple/[0.08] text-accent-purple/80 border border-accent-purple/15
             hover:bg-accent-purple/15 transition-all duration-300"
@@ -506,37 +584,42 @@ function PRReviewTab() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2 shrink-0">
-        <SourceBadge source={prReviewData.source} />
+        <SourceBadge source={content ? "ai" : null} isStreaming={isStreaming} />
         <div className="ml-auto flex items-center gap-1">
-          <motion.button
-            onClick={handleCopy}
-            whileTap={{ scale: 0.9 }}
-            className="p-1 rounded transition-colors"
-            style={{ color: "var(--text-muted)" }}
-            title="Copy to clipboard"
-          >
-            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-          </motion.button>
-          <motion.button
-            onClick={handleGenerate}
-            whileTap={{ scale: 0.9 }}
-            className="p-1 rounded transition-colors"
-            style={{ color: "var(--text-muted)" }}
-            title="Regenerate"
-          >
-            <RefreshCw className="w-3 h-3" />
-          </motion.button>
+          {content && (
+            <motion.button onClick={handleCopy} whileTap={{ scale: 0.9 }}
+              className="p-1 rounded transition-colors" style={{ color: "var(--text-muted)" }}
+            >
+              {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+            </motion.button>
+          )}
+          {isStreaming
+            ? <StopButton onClick={handleCancel} />
+            : (
+              <motion.button onClick={handleGenerate} whileTap={{ scale: 0.9 }}
+                className="p-1 rounded transition-colors" style={{ color: "var(--text-muted)" }} title="Regenerate"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </motion.button>
+            )
+          }
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-2 ai-content">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{prReviewData.review}</ReactMarkdown>
+        {content && <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>}
+        {isStreaming && (
+          content
+            ? <StreamCursor />
+            : <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-2"><StreamCursor /><span>Generating PR review…</span></div>
+        )}
       </div>
     </div>
   );
 }
 
-
-
+// ---------------------------------------------------------------------------
+// AdvancedAIPanel root
+// ---------------------------------------------------------------------------
 
 const ADVANCED_TABS: { id: AdvancedTab; label: string; icon: typeof FileText }[] = [
   { id: "readme", label: "README", icon: FileText },
@@ -548,16 +631,12 @@ const ADVANCED_TABS: { id: AdvancedTab; label: string; icon: typeof FileText }[]
 export function AdvancedAIPanel() {
   const [tab, setTab] = useState<AdvancedTab>("readme");
 
-
   useEffect(() => {
     const onSubTab = (e: Event) => {
       const detail = (e as CustomEvent).detail as string;
       const tabMap: Record<string, AdvancedTab> = {
-        readme: "readme",
-        refactor: "refactor",
-        security: "security",
-        pr: "pr-review",
-        "pr-review": "pr-review",
+        readme: "readme", refactor: "refactor", security: "security",
+        pr: "pr-review", "pr-review": "pr-review",
       };
       const target = tabMap[detail];
       if (target) setTab(target);
@@ -568,7 +647,6 @@ export function AdvancedAIPanel() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      { }
       <div className="flex shrink-0 px-1" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         {ADVANCED_TABS.map((t) => {
           const Icon = t.icon;
@@ -577,7 +655,7 @@ export function AdvancedAIPanel() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-[9px] font-medium transition-all duration-200`}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[9px] font-medium transition-all duration-200 relative"
               style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}
             >
               <Icon className="w-2.5 h-2.5" />

@@ -54,3 +54,13 @@ node_modules/
 dist/
 build/
 *.log
+
+#temp / logs
+
+*.log
+logs/
+*.tmp
+*.cache
+__pycache__/
+*.pyc
+.env

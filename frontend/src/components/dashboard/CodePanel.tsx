@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
 import { useThemeStore } from "../../store/themeStore";
-import { analyzeCode } from "../../api/api";
+import { streamAI } from "../../api/aiStream";
 import { AIPanel } from "./AIPanel";
 import { CollaborationPanel } from "../collaboration/CollaborationPanel";
 
@@ -64,9 +64,10 @@ export function CodePanel() {
     fileContent,
     sessionId,
     parsedFiles,
-    isAILoading,
     setAIAnalysis,
-    setAILoading,
+    appendAIAnalysis,
+    setAIStreaming,
+    isAIStreaming,
   } = useAppStore();
 
   const theme = useThemeStore((s) => s.theme);
@@ -103,25 +104,36 @@ export function CodePanel() {
     editorRef.current = editor;
   };
 
-  const handleAnalyzeSelection = async () => {
+  const handleAnalyzeSelection = () => {
     if (!editorRef.current || !sessionId || !selectedFile) return;
     const selection = editorRef.current.getSelection();
     const selectedCode = editorRef.current.getModel()?.getValueInRange(selection);
     if (!selectedCode?.trim()) return;
 
-    setAILoading(true);
+    // Clear previous analysis and switch to AI tab
+    setAIAnalysis("", undefined);
+    setAIStreaming(true);
     setActiveTab("ai");
-    try {
-      const result = await analyzeCode(
-        sessionId, selectedFile, selectedCode,
-        selection.startLineNumber, selection.endLineNumber
-      );
-      setAIAnalysis(result.analysis, result.source);
-    } catch {
-      setAIAnalysis("Failed to analyze selection.", "error");
-    } finally {
-      setAILoading(false);
-    }
+
+    streamAI(
+      "/ai/analyze/stream",
+      {
+        session_id: sessionId,
+        file_path: selectedFile,
+        code: selectedCode,
+        start_line: String(selection.startLineNumber),
+        end_line: String(selection.endLineNumber),
+      },
+      {
+        onChunk: (text) => appendAIAnalysis(text),
+        onDone: () => setAIStreaming(false),
+        onError: () => {
+          setAIStreaming(false);
+          setAIAnalysis("Failed to analyse selection. Please try again.", "error");
+        },
+      },
+      "POST"
+    );
   };
 
 
@@ -223,7 +235,7 @@ export function CodePanel() {
           onClick={() => setActiveTab("ai")}
           icon={Brain}
           label="AI Intelligence"
-          badge={isAILoading}
+          badge={isAIStreaming}
         />
         <MemoTabButton
           active={activeTab === "collab"}
@@ -282,7 +294,7 @@ export function CodePanel() {
               <div className="px-3 py-2 flex items-center gap-2 shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                 <motion.button
                   onClick={handleAnalyzeSelection}
-                  disabled={isAILoading}
+                  disabled={isAIStreaming}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium

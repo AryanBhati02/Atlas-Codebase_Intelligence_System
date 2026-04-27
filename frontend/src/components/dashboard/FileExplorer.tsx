@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
-import { getFileContent, explainFile } from "../../api/api";
+import { getFileContent } from "../../api/api";
 import type { TreeNode, ParsedFile } from "../../types";
 
 
@@ -85,8 +85,6 @@ export function FileExplorer() {
     sessionId,
     setSelectedFile,
     setFileContent,
-    setAIExplanation,
-    setAILoading,
   } = useAppStore();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -128,18 +126,11 @@ export function FileExplorer() {
   const handleFileClick = async (path: string) => {
     if (!sessionId) return;
     setSelectedFile(path);
-
     try {
       const content = await getFileContent(sessionId, path);
       setFileContent(content);
-    } catch { }
-
-    try {
-      setAILoading(true);
-      const ai = await explainFile(sessionId, path);
-      setAIExplanation(ai.explanation, ai.source);
-    } catch { }
-    finally { setAILoading(false); }
+    } catch { /* no-op */ }
+    // ExplainTab auto-streams the explanation when selectedFile changes
   };
 
   const renderNode = (node: TreeNode, depth: number) => {

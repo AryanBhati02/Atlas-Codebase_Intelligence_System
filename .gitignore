@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Build output
+frontend/dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Sessions (generated at runtime)
+backend/sessions/
+
+# Database (generated at runtime)
+backend/*.db
+backend/*.sqlite
+
+# Logs
+*.log
+
+# Coverage
+htmlcov/
+.coverage
+
+# Misc
+*.bak
+*.tmp
+
+
+node_modules/
+.env
+dist/
+build/
+*.log

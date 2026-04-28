@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from config import CORS_ORIGINS
+from config import CORS_ORIGINS, SESSIONS_DIR
 from api.routes.ingest import router as ingest_router
 from api.routes.analyze import router as analyze_router
 from api.routes.files import router as files_router
@@ -87,4 +87,12 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # sessions/ is created by config.py at import time (above), so it exists
+    # before the watcher starts and the exclusion takes effect immediately.
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_excludes=[str(SESSIONS_DIR)],
+    )

@@ -17,18 +17,31 @@ import ReactFlow, {
   ReactFlowProvider,
   type Node,
   type Edge,
+  type Viewport,
   Handle,
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { motion } from "framer-motion";
-import { Layers, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Layers, Loader2, Search, X, Navigation } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
 import { getFileContent, explainFile, getFunctionGraph } from "../../api/api";
 import { GraphToolbar, type LayoutMode } from "../graph/GraphToolbar";
 import { FunctionGraph } from "../graph/FunctionGraph";
 import { GitTimeline } from "../graph/GitTimeline";
 import { useGraphLayout } from "../../hooks/useGraphLayout";
+import { ClusterNodeComponent } from "./ClusterNode";
+import {
+  clusterByDirectory,
+  expandCluster,
+  collapseCluster,
+  getVisibleNodes,
+  type AppNode,
+  type AppNodeData,
+  type AnyNode,
+  type ClusterNode,
+  type ClusteredGraph,
+} from "../../utils/graphClustering";
 import type { CoverageResponse } from "../../types";
 
 const Graph3DView = lazy(() =>
@@ -125,30 +138,22 @@ function hexToRgb(hex: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Sync radial layout (dagre doesn't support radial, keep this as fallback)
+// Sync radial layout (fallback when dagre is skipped)
 // ---------------------------------------------------------------------------
 
 function applyRadialLayout(nodes: Node[]): Node[] {
-  const cx = 400,
-    cy = 400;
+  const cx = 400, cy = 400;
   return nodes.map((n, i) => {
     if (i === 0) return { ...n, position: { x: cx, y: cy } };
     const ring = Math.ceil(i / 8);
     const angle = ((i % 8) / 8) * Math.PI * 2 + ring * 0.4;
     const radius = ring * 150;
-    return {
-      ...n,
-      position: {
-        x: cx + Math.cos(angle) * radius,
-        y: cy + Math.sin(angle) * radius,
-      },
-    };
+    return { ...n, position: { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius } };
   });
 }
 
 // ---------------------------------------------------------------------------
-// Progressive node reveal — adds nodes in batches so the graph "builds in"
-// Returns a cancel function to stop pending timeouts.
+// Progressive node reveal
 // ---------------------------------------------------------------------------
 
 function scheduleProgressiveBuild(
@@ -160,7 +165,7 @@ function scheduleProgressiveBuild(
   onBatchAdded: (loaded: number, total: number) => void
 ): () => void {
   const BATCH = 30;
-  const DELAY = 60; // ms between batches
+  const DELAY = 60;
   const timers: ReturnType<typeof setTimeout>[] = [];
   const total = nodes.length;
 
@@ -174,23 +179,14 @@ function scheduleProgressiveBuild(
     const loaded = Math.min(start + BATCH, total);
 
     const t = setTimeout(() => {
-      const invisible = batch.map((n) => ({
-        ...n,
-        style: { ...n.style, opacity: 0 },
-      }));
-
-      setNodes((prev) =>
-        b === 0 ? invisible : [...prev, ...invisible]
-      );
+      const invisible = batch.map((n) => ({ ...n, style: { ...n.style, opacity: 0 } }));
+      setNodes((prev) => (b === 0 ? invisible : [...prev, ...invisible]));
 
       requestAnimationFrame(() => {
         setNodes((prev) =>
           prev.map((n) => {
             if (invisible.some((iv) => iv.id === n.id)) {
-              return {
-                ...n,
-                style: { opacity: 1, transition: "opacity 0.2s ease" },
-              };
+              return { ...n, style: { opacity: 1, transition: "opacity 0.2s ease" } };
             }
             return n;
           })
@@ -198,10 +194,7 @@ function scheduleProgressiveBuild(
       });
 
       onBatchAdded(loaded, total);
-
-      if (b === batchCount - 1) {
-        onComplete();
-      }
+      if (b === batchCount - 1) onComplete();
     }, b * DELAY);
 
     timers.push(t);
@@ -224,7 +217,7 @@ function getConnectedNodeIds(nodeId: string, edges: Edge[]): Set<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Custom node component
+// Custom file node
 // ---------------------------------------------------------------------------
 
 const CustomNode = React.memo(function CustomNode({
@@ -255,13 +248,7 @@ const CustomNode = React.memo(function CustomNode({
       <Handle
         type="target"
         position={Position.Top}
-        style={{
-          background: color,
-          border: "none",
-          width: 5,
-          height: 5,
-          opacity: data.isDimmed ? 0.3 : 0.7,
-        }}
+        style={{ background: color, border: "none", width: 5, height: 5, opacity: data.isDimmed ? 0.3 : 0.7 }}
       />
 
       {data.selected && (
@@ -281,7 +268,7 @@ const CustomNode = React.memo(function CustomNode({
         className={`graph-node ${data.selected ? "selected" : ""} ${data.isDead ? "dead-node" : ""} ${data.isDimmed ? "dimmed" : ""} ${data.isHighlighted ? "highlighted" : ""}`}
         style={{
           borderColor: data.isHighlighted
-            ? "rgba(34, 211, 238, 0.3)"
+            ? "rgba(34, 211, 238, 0.5)"
             : data.selected
               ? `${color}80`
               : data.isDead
@@ -290,30 +277,26 @@ const CustomNode = React.memo(function CustomNode({
           boxShadow: data.isDead
             ? "none"
             : `0 0 ${glowSize}px rgba(${hexToRgb(color)}, ${glowIntensity})`,
+          outline: data.isHighlighted ? "1.5px solid rgba(34, 211, 238, 0.4)" : "none",
+          outlineOffset: 2,
         }}
       >
         <div
           className="inline-block mr-1.5 rounded-full"
           style={{
-            width: 5,
-            height: 5,
+            width: 5, height: 5,
             backgroundColor: data.isDead ? "#475569" : color,
             boxShadow: data.isDead ? "none" : `0 0 6px ${color}50`,
           }}
         />
-        <span style={{ opacity: data.isDimmed ? 0.5 : 1 }}>{data.label}</span>
+        <span style={{ opacity: data.isDimmed ? 0.4 : 1 }}>{data.label}</span>
         {data.isDead && (
-          <span
-            className="ml-1 text-[7px] uppercase tracking-widest font-semibold"
-            style={{ color: "var(--text-muted)" }}
-          >
+          <span className="ml-1 text-[7px] uppercase tracking-widest font-semibold" style={{ color: "var(--text-muted)" }}>
             dead
           </span>
         )}
         {data.coveragePct !== null && (
-          <span
-            className={`ml-1 text-[7px] font-semibold ${getCoverageClass(data.coveragePct)}`}
-          >
+          <span className={`ml-1 text-[7px] font-semibold ${getCoverageClass(data.coveragePct)}`}>
             {data.coveragePct}%
           </span>
         )}
@@ -328,23 +311,19 @@ const CustomNode = React.memo(function CustomNode({
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{
-          background: color,
-          border: "none",
-          width: 5,
-          height: 5,
-          opacity: data.isDimmed ? 0.3 : 0.7,
-        }}
+        style={{ background: color, border: "none", width: 5, height: 5, opacity: data.isDimmed ? 0.3 : 0.7 }}
       />
     </>
   );
 });
 
-const nodeTypes = { custom: CustomNode };
+const nodeTypes = {
+  custom: CustomNode,
+  clusterNode: ClusterNodeComponent,
+};
 
 // ---------------------------------------------------------------------------
-// Visual state snapshot — kept in a ref so async layout callbacks always read
-// the freshest values without stale-closure issues.
+// Visual state snapshot
 // ---------------------------------------------------------------------------
 
 interface VisualState {
@@ -357,18 +336,26 @@ interface VisualState {
   coverageData: CoverageResponse | null;
   commentCounts: Record<string, number>;
   showDeadCode: boolean;
+  searchMatchIds: Set<string>;
 }
 
 function enrichNode(node: Node, v: VisualState): Node {
+  const hasSearch = v.searchMatchIds.size > 0;
   return {
     ...node,
     data: {
       ...node.data,
       selected: node.id === v.selectedFile,
       isDead: v.deadFilePaths.has(node.id),
-      isDimmed: v.connectedIds ? !v.connectedIds.has(node.id) : false,
+      isDimmed: hasSearch
+        ? !v.searchMatchIds.has(node.id)
+        : v.connectedIds
+          ? !v.connectedIds.has(node.id)
+          : false,
       heatmapOn: v.heatmapOn,
-      isHighlighted: v.highlightedFiles.has(node.id),
+      isHighlighted: hasSearch
+        ? v.searchMatchIds.has(node.id)
+        : v.highlightedFiles.has(node.id),
       coveragePct:
         v.showCoverage && v.coverageData?.coverage?.[node.id] != null
           ? v.coverageData.coverage[node.id]
@@ -386,7 +373,7 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
   return {
     ...edge,
     type: "smoothstep",
-    hidden: deadTarget,
+    hidden: !!deadTarget,
     animated: !!isConnected,
     style: {
       stroke: isConnected
@@ -395,14 +382,14 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
           ? "rgba(245, 158, 11, 0.1)"
           : "rgba(124, 110, 224, 0.1)",
       strokeWidth: isConnected ? 2 : 1,
-      opacity: v.connectedIds && !isConnected ? 0.2 : 1,
+      opacity: v.connectedIds && !isConnected && v.searchMatchIds.size === 0 ? 0.2 : 1,
       transition: "all 0.5s ease",
     },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Main graph component (inner — needs ReactFlowProvider above it)
+// Main graph component
 // ---------------------------------------------------------------------------
 
 function GraphViewInner() {
@@ -431,15 +418,34 @@ function GraphViewInner() {
   const [heatmapOn, setHeatmapOn] = useState(false);
   const [layout, setLayout] = useState<LayoutMode>("force");
   const [buildText, setBuildText] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [matchingNodeIds, setMatchingNodeIds] = useState<Set<string>>(new Set());
 
   const lastClickRef = useRef<{ id: string; time: number }>({ id: "", time: 0 });
   const cleanupRef = useRef<(() => void) | null>(null);
+  const allNodesRef = useRef<AnyNode[]>([]);
+  const allEdgesRef = useRef<Edge[]>([]);
+  const clusteredGraphRef = useRef<ClusteredGraph | null>(null);
+  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { fitView } = useReactFlow();
+  const { fitView, setCenter } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
   const { computeLayout, isComputing } = useGraphLayout();
+
+  // -------------------------------------------------------------------------
+  // Toast helper
+  // -------------------------------------------------------------------------
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  }, []);
 
   // -------------------------------------------------------------------------
   // Derived visual state
@@ -458,7 +464,6 @@ function GraphViewInner() {
     );
   }, [selectedFile, graphData]);
 
-  // Keep a mutable ref to the latest visual state so async callbacks are never stale.
   const visualRef = useRef<VisualState>({
     selectedFile,
     deadFilePaths,
@@ -469,6 +474,7 @@ function GraphViewInner() {
     coverageData: coverageData ?? null,
     commentCounts,
     showDeadCode,
+    searchMatchIds: matchingNodeIds,
   });
   visualRef.current = {
     selectedFile,
@@ -480,10 +486,11 @@ function GraphViewInner() {
     coverageData: coverageData ?? null,
     commentCounts,
     showDeadCode,
+    searchMatchIds: matchingNodeIds,
   };
 
   // -------------------------------------------------------------------------
-  // Structural raw data (no positions, no visual state) — triggers layout
+  // Raw structural data — triggers layout recompute
   // -------------------------------------------------------------------------
 
   const rawNodes = useMemo((): Node[] => {
@@ -496,7 +503,6 @@ function GraphViewInner() {
         label: n.label,
         language: n.language,
         complexity: n.complexity_score,
-        // Visual fields will be applied in layout callback via visualRef
         selected: false,
         isDead: false,
         isDimmed: false,
@@ -518,11 +524,73 @@ function GraphViewInner() {
   }, [graphData]);
 
   // -------------------------------------------------------------------------
-  // Layout effect — re-runs only when graph structure or layout mode changes
+  // Core layout-and-build helper
+  // Runs dagre (or radial) then progressively reveals nodes.
+  // -------------------------------------------------------------------------
+
+  const runLayoutAndBuild = useCallback(
+    (displayNodes: AnyNode[], displayEdges: Edge[]) => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+      setBuildText(null);
+
+      const v = visualRef.current;
+
+      function applyAndBuild(positioned: AnyNode[]) {
+        allNodesRef.current = positioned;
+        allEdgesRef.current = displayEdges;
+
+        const viewport = viewportRef.current;
+        const visible = getVisibleNodes(positioned, viewport, viewport.zoom);
+
+        const enriched = visible.map((n) =>
+          n.type === "clusterNode" ? n : enrichNode(n as Node, v)
+        );
+        const processedEdges = displayEdges.map((e) => styledEdge(e, v));
+
+        const cancel = scheduleProgressiveBuild(
+          enriched as Node[],
+          processedEdges,
+          setNodes,
+          setEdges,
+          () => {
+            setBuildText(null);
+            setTimeout(() => fitView({ padding: 0.3, duration: 400 }), 50);
+          },
+          (loaded, total) => {
+            if (loaded < total) setBuildText(`Loading: ${loaded} / ${total} nodes`);
+          }
+        );
+        cleanupRef.current = cancel;
+      }
+
+      if (layout === "radial") {
+        applyAndBuild(applyRadialLayout(displayNodes as Node[]) as AnyNode[]);
+        return;
+      }
+
+      const direction = layout === "layered" ? "LR" : "TB";
+
+      computeLayout(displayNodes as Node[], displayEdges, direction)
+        .then(({ nodes: positioned }) => applyAndBuild(positioned as AnyNode[]))
+        .catch((err: Error) => {
+          const msg = err.message;
+          if (!msg.includes("Superseded") && !msg.includes("unmounted")) {
+            console.error("[GraphLayout]", msg);
+          }
+        });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layout, computeLayout, fitView, setNodes, setEdges]
+  );
+
+  // -------------------------------------------------------------------------
+  // Smart initial render — clusters for large repos
   // -------------------------------------------------------------------------
 
   useEffect(() => {
-    // Cancel any previous progressive build
     if (cleanupRef.current) {
       cleanupRef.current();
       cleanupRef.current = null;
@@ -532,50 +600,43 @@ function GraphViewInner() {
     if (rawNodes.length === 0) {
       setNodes([]);
       setEdges([]);
+      clusteredGraphRef.current = null;
+      allNodesRef.current = [];
+      allEdgesRef.current = [];
       return;
     }
 
-    const v = visualRef.current;
-
-    function applyAndBuild(positioned: Node[]) {
-      const enriched = positioned.map((n) => enrichNode(n, v));
-      const processedEdges = rawEdges.map((e) => styledEdge(e, v));
-
-      const cancel = scheduleProgressiveBuild(
-        enriched,
-        processedEdges,
-        setNodes,
-        setEdges,
-        () => {
-          setBuildText(null);
-          setTimeout(() => fitView({ padding: 0.3, duration: 400 }), 50);
-        },
-        (loaded, total) => {
-          if (loaded < total) {
-            setBuildText(`Loading: ${loaded} / ${total} nodes`);
-          }
-        }
+    if (rawNodes.length <= 150) {
+      // Small repo — render all nodes, no clustering
+      clusteredGraphRef.current = null;
+      runLayoutAndBuild(rawNodes as AnyNode[], rawEdges);
+    } else if (rawNodes.length <= 600) {
+      // Medium — cluster by directory and show all clusters
+      const clustered = clusterByDirectory(rawNodes as AppNode[], rawEdges);
+      clusteredGraphRef.current = clustered;
+      showToast(
+        `Showing ${clustered.nodes.length} directory clusters — click any to expand.`
       );
-      cleanupRef.current = cancel;
+      runLayoutAndBuild(clustered.nodes, clustered.edges);
+    } else {
+      // Large — cluster and show only the 50 biggest directories
+      const clustered = clusterByDirectory(rawNodes as AppNode[], rawEdges);
+      const sorted = [...clustered.nodes].sort(
+        (a, b) =>
+          ((b as ClusterNode).data?.fileCount ?? 0) -
+          ((a as ClusterNode).data?.fileCount ?? 0)
+      );
+      const top50 = sorted.slice(0, 50) as ClusterNode[];
+      const top50Ids = new Set(top50.map((n) => n.id));
+      const filteredEdges = clustered.edges.filter(
+        (e) => top50Ids.has(e.source) && top50Ids.has(e.target)
+      );
+      clusteredGraphRef.current = { ...clustered, nodes: top50, edges: filteredEdges };
+      showToast(
+        `${rawNodes.length} files detected — showing 50 largest directory clusters.`
+      );
+      runLayoutAndBuild(top50, filteredEdges);
     }
-
-    if (layout === "radial") {
-      applyAndBuild(applyRadialLayout(rawNodes));
-      return;
-    }
-
-    const direction = layout === "layered" ? "LR" : "TB";
-
-    computeLayout(rawNodes, rawEdges, direction)
-      .then(({ nodes: positioned }) => {
-        applyAndBuild(positioned);
-      })
-      .catch((err: Error) => {
-        const msg = err.message;
-        if (!msg.includes("Superseded") && !msg.includes("unmounted")) {
-          console.error("[GraphLayout]", msg);
-        }
-      });
 
     return () => {
       if (cleanupRef.current) {
@@ -583,16 +644,91 @@ function GraphViewInner() {
         cleanupRef.current = null;
       }
     };
-  }, [rawNodes, rawEdges, layout, computeLayout, fitView, setNodes, setEdges]);
+  }, [rawNodes, rawEdges, runLayoutAndBuild, setNodes, setEdges, showToast]);
 
   // -------------------------------------------------------------------------
-  // Visual effect — fast updates that must not re-trigger layout
+  // Cluster expand / collapse (triggered via custom event from ClusterNode)
+  // No dagre re-layout — children snap to a grid below the cluster header.
+  // -------------------------------------------------------------------------
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const clusterId = (e as CustomEvent<string>).detail;
+      const graph = clusteredGraphRef.current;
+      if (!graph) return;
+
+      const isExpanded = graph.expandedClusters.has(clusterId);
+      const newGraph = isExpanded
+        ? collapseCluster(clusterId, graph)
+        : expandCluster(clusterId, graph);
+
+      clusteredGraphRef.current = newGraph;
+      allNodesRef.current = newGraph.nodes;
+      allEdgesRef.current = newGraph.edges;
+
+      const v = visualRef.current;
+      const viewport = viewportRef.current;
+      const visible = getVisibleNodes(newGraph.nodes, viewport, viewport.zoom);
+
+      const enriched = visible.map((n) =>
+        n.type === "clusterNode" ? n : enrichNode(n as Node, v)
+      );
+      const processedEdges = newGraph.edges.map((ee) => styledEdge(ee, v));
+
+      setNodes(enriched as Node[]);
+      setEdges(processedEdges);
+
+      if (!isExpanded) {
+        const cluster = newGraph.nodes.find((n) => n.id === clusterId) as
+          | ClusterNode
+          | undefined;
+        if (cluster) {
+          showToast(
+            `Expanded "${cluster.data.dirName}" — ${cluster.data.fileCount} files`
+          );
+        }
+      }
+    };
+
+    window.addEventListener("cluster:toggle", handler);
+    return () => window.removeEventListener("cluster:toggle", handler);
+  }, [setNodes, setEdges, showToast]);
+
+  // -------------------------------------------------------------------------
+  // Viewport culling — debounced 100 ms, fires on every pan / zoom step
+  // -------------------------------------------------------------------------
+
+  const onMove = useCallback(
+    (_evt: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+      viewportRef.current = viewport;
+      if (allNodesRef.current.length <= 150) return; // nothing to cull
+
+      if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
+      viewportTimerRef.current = setTimeout(() => {
+        const allNodes = allNodesRef.current;
+        if (allNodes.length <= 150) return;
+
+        const visible = getVisibleNodes(allNodes, viewport, viewport.zoom);
+        const v = visualRef.current;
+        const enriched = visible.map((n) =>
+          n.type === "clusterNode" ? n : enrichNode(n as Node, v)
+        );
+        setNodes(enriched as Node[]);
+      }, 100);
+    },
+    [setNodes]
+  );
+
+  // -------------------------------------------------------------------------
+  // Visual-only effect — re-enriches currently rendered nodes on state change
   // -------------------------------------------------------------------------
 
   useEffect(() => {
     if (nodes.length === 0) return;
     const v = visualRef.current;
-    setNodes((nds) => nds.map((n) => enrichNode(n, v)));
+    setNodes((nds) =>
+      nds.map((n) => (n.type === "clusterNode" ? n : enrichNode(n, v)))
+    );
     setEdges((eds) => eds.map((e) => styledEdge(e, v)));
   }, [
     selectedFile,
@@ -604,10 +740,69 @@ function GraphViewInner() {
     coverageData,
     commentCounts,
     showDeadCode,
+    matchingNodeIds,
     setNodes,
     setEdges,
-    // nodes.length intentionally excluded — we read from state via updater fn
+    // nodes.length intentionally excluded — we read via updater fn
   ]);
+
+  // -------------------------------------------------------------------------
+  // Search — debounced 200 ms, scans allNodesRef (not just visible subset)
+  // -------------------------------------------------------------------------
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchInput(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      if (!value.trim()) {
+        setMatchingNodeIds(new Set());
+        return;
+      }
+      const q = value.toLowerCase();
+      const matches = new Set<string>();
+      for (const n of allNodesRef.current) {
+        if (n.type === "clusterNode") continue;
+        const label = ((n.data as AppNodeData).label ?? n.id).toLowerCase();
+        if (label.includes(q)) matches.add(n.id);
+      }
+      setMatchingNodeIds(matches);
+    }, 200);
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    setSearchInput("");
+    setMatchingNodeIds(new Set());
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+  }, []);
+
+  // Jump to first search match — auto-expands a collapsed cluster if needed
+  const jumpToFirstMatch = useCallback(() => {
+    const first = [...matchingNodeIds][0];
+    if (!first) return;
+
+    const graph = clusteredGraphRef.current;
+    if (graph) {
+      const clusterId = graph.clusterOf.get(first);
+      // Node is inside a collapsed cluster: expand it first.
+      // Dispatch is synchronous → allNodesRef is updated before we continue.
+      if (clusterId && !graph.expandedClusters.has(clusterId)) {
+        window.dispatchEvent(
+          new CustomEvent("cluster:toggle", { detail: clusterId })
+        );
+      }
+    }
+
+    // rAF lets ReactFlow commit the setNodes before we call setCenter
+    requestAnimationFrame(() => {
+      const node = allNodesRef.current.find((n) => n.id === first);
+      if (node) {
+        setCenter(node.position.x + 100, node.position.y + 30, {
+          zoom: 1.5,
+          duration: 600,
+        });
+      }
+    });
+  }, [matchingNodeIds, setCenter]);
 
   // -------------------------------------------------------------------------
   // Command palette events
@@ -652,13 +847,13 @@ function GraphViewInner() {
 
   const onNodeClick = useCallback(
     async (_: React.MouseEvent, node: Node) => {
+      // Cluster node clicks are handled by the ClusterNode component itself
+      if (node.type === "clusterNode") return;
       if (!sessionId) return;
+
       const now = Date.now();
 
-      if (
-        lastClickRef.current.id === node.id &&
-        now - lastClickRef.current.time < 400
-      ) {
+      if (lastClickRef.current.id === node.id && now - lastClickRef.current.time < 400) {
         setFunctionGraphLoading(true);
         try {
           const fg = await getFunctionGraph(sessionId, node.id);
@@ -676,16 +871,12 @@ function GraphViewInner() {
       try {
         const content = await getFileContent(sessionId, node.id);
         setFileContent(content);
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
       try {
         setAILoading(true);
         const ai = await explainFile(sessionId, node.id);
         setAIExplanation(ai.explanation, ai.source);
-      } catch {
-        /* ignore */
-      } finally {
+      } catch { /* ignore */ } finally {
         setAILoading(false);
       }
     },
@@ -737,19 +928,20 @@ function GraphViewInner() {
   // Render
   // -------------------------------------------------------------------------
 
+  const isClustered = clusteredGraphRef.current !== null;
+  const totalFiles = graphData.nodes.length;
+
   return (
     <div className="relative w-full h-full flex flex-col" style={{ zIndex: 1 }}>
       <div className="relative flex-1 min-h-0 w-full">
-        {/* Computing layout overlay */}
+
+        {/* Layout computing overlay */}
         {isComputing && (
           <div
             className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 backdrop-blur-sm"
             style={{ background: "var(--bg-base)60" }}
           >
-            <Loader2
-              className="w-6 h-6 animate-spin"
-              style={{ color: "var(--accent-purple)" }}
-            />
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--accent-purple)" }} />
             <p className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
               Computing layout…
             </p>
@@ -773,7 +965,7 @@ function GraphViewInner() {
           </motion.div>
         )}
 
-        {/* Analysis file-parse counter (shown during re-analysis) */}
+        {/* Analysis progress (during re-analysis) */}
         {isAnalyzing &&
           analysisProgress?.stage === "parsing" &&
           analysisProgress.total > 0 && (
@@ -791,7 +983,110 @@ function GraphViewInner() {
             </motion.div>
           )}
 
-        {/* Main graph area */}
+        {/* Search bar — top left */}
+        {!show3DGraph && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="absolute top-3 left-3 z-20 flex items-center gap-2"
+          >
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 rounded-xl"
+              style={{
+                background: "var(--bg-overlay)",
+                border: "1px solid var(--border-subtle)",
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              <Search className="w-3 h-3 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Search nodes…"
+                className="bg-transparent outline-none w-36 text-[10px] font-medium"
+                style={{ color: "var(--text-primary)", caretColor: "var(--accent-purple)" }}
+              />
+              {searchInput && (
+                <button
+                  onClick={clearSearch}
+                  className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+                </button>
+              )}
+            </div>
+
+            {/* Match results */}
+            <AnimatePresence>
+              {searchInput && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-xl"
+                  style={{
+                    background: "var(--bg-overlay)",
+                    border: "1px solid var(--border-subtle)",
+                    backdropFilter: "blur(12px)",
+                  }}
+                >
+                  {matchingNodeIds.size > 0 ? (
+                    <>
+                      <span className="text-[10px] font-medium" style={{ color: "var(--accent-cyan)" }}>
+                        {matchingNodeIds.size} match{matchingNodeIds.size !== 1 ? "es" : ""}
+                      </span>
+                      <button
+                        onClick={jumpToFirstMatch}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-semibold transition-all hover:scale-105"
+                        style={{
+                          background: "rgba(34, 211, 238, 0.12)",
+                          border: "1px solid rgba(34, 211, 238, 0.2)",
+                          color: "var(--accent-cyan)",
+                        }}
+                        title="Center on first match (auto-expands clusters)"
+                      >
+                        <Navigation className="w-2.5 h-2.5" />
+                        Jump
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                      No matches
+                    </span>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {/* Toast notification */}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              key="toast"
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 px-4 py-2
+                rounded-full text-[10px] font-medium max-w-xs text-center"
+              style={{
+                background: "var(--bg-overlay)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-secondary)",
+                backdropFilter: "blur(16px)",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+              }}
+            >
+              {toast}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Main graph */}
         {show3DGraph ? (
           <Graph3DErrorBoundary onFallback={toggle3DGraph}>
             <Suspense
@@ -812,21 +1107,24 @@ function GraphViewInner() {
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
+            onMove={onMove}
             nodeTypes={nodeTypes}
             fitView
             fitViewOptions={{ padding: 0.3 }}
-            minZoom={0.1}
-            maxZoom={2.5}
+            minZoom={0.05}
+            maxZoom={2}
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={{ type: "smoothstep", animated: false }}
-            nodesDraggable={!isComputing}
+            nodesDraggable={nodes.length < 200 && !isComputing}
             nodesConnectable={false}
             elementsSelectable={!isComputing}
+            onlyRenderVisibleElements
           >
             <Background color="rgba(124, 110, 224, 0.02)" gap={24} />
             <Controls showInteractive={false} style={{ marginBottom: 36 }} />
             <MiniMap
               nodeColor={(n) => {
+                if (n.type === "clusterNode") return "#7c6ee0";
                 if (n.data?.isDead) return "#374151";
                 if (heatmapOn) return getHeatmapColor(n.data?.complexity || 0);
                 return getNodeColor(n.data?.language);
@@ -845,6 +1143,7 @@ function GraphViewInner() {
           onFitView={() => fitView({ padding: 0.3, duration: 400 })}
         />
 
+        {/* Stats bar — bottom left */}
         {!show3DGraph && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -857,12 +1156,33 @@ function GraphViewInner() {
               border: "1px solid var(--border-subtle)",
             }}
           >
-            <span
-              className="text-[9px] font-medium"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {graphData.nodes.length} nodes · {graphData.edges.length} edges
+            <span className="text-[9px] font-medium" style={{ color: "var(--text-muted)" }}>
+              {totalFiles} files
             </span>
+            {isClustered && (
+              <>
+                <span style={{ color: "var(--border-subtle)" }}>·</span>
+                <span className="text-[9px] font-medium" style={{ color: "var(--accent-purple)" }}>
+                  clustered
+                </span>
+              </>
+            )}
+            <span style={{ color: "var(--border-subtle)" }}>·</span>
+            <span className="text-[9px] font-medium" style={{ color: "var(--text-muted)" }}>
+              {nodes.length} rendered
+            </span>
+            <span style={{ color: "var(--border-subtle)" }}>·</span>
+            <span className="text-[9px] font-medium" style={{ color: "var(--text-muted)" }}>
+              {graphData.edges.length} edges
+            </span>
+            {matchingNodeIds.size > 0 && (
+              <>
+                <span style={{ color: "var(--border-subtle)" }}>·</span>
+                <span className="text-[9px] font-medium" style={{ color: "var(--accent-cyan)" }}>
+                  {matchingNodeIds.size} matched
+                </span>
+              </>
+            )}
           </motion.div>
         )}
 

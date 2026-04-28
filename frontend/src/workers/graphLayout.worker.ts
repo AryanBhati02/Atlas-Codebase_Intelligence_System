@@ -37,14 +37,19 @@ self.onmessage = (event: MessageEvent<WorkerInput>): void => {
     g.setDefaultEdgeLabel(() => ({}));
     g.setGraph({
       rankdir: direction,
-      ranksep: 80,
-      nodesep: 60,
-      marginx: 40,
-      marginy: 40,
+      ranksep: 90,
+      nodesep: 70,
+      marginx: 50,
+      marginy: 50,
     });
 
     for (const node of nodes) {
-      g.setNode(node.id, { width: 200, height: 60 });
+      // Cluster nodes are wider/taller than regular file nodes
+      const isCluster = node.type === "clusterNode";
+      g.setNode(node.id, {
+        width: isCluster ? 280 : 200,
+        height: isCluster ? 80 : 60,
+      });
     }
 
     for (const edge of edges) {
@@ -56,12 +61,13 @@ self.onmessage = (event: MessageEvent<WorkerInput>): void => {
     dagre.layout(g);
 
     const positioned: PositionedNode[] = nodes.map((node) => {
+      const isCluster = node.type === "clusterNode";
       const pos = g.node(node.id);
       return {
         ...node,
         position: {
-          x: pos ? pos.x - 100 : 0,
-          y: pos ? pos.y - 30 : 0,
+          x: pos ? pos.x - (isCluster ? 140 : 100) : 0,
+          y: pos ? pos.y - (isCluster ? 40 : 30) : 0,
         },
       };
     });

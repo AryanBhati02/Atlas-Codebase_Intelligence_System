@@ -1,442 +1,175 @@
+/**
+ * Backward-compatible combined store hook.
+ *
+ * Components that have not yet been migrated to the split stores can import
+ * `useAppStore` from this file and get the same interface as before.
+ * New code should import from the specific sub-stores directly.
+ *
+ * Performance note: this hook subscribes to ALL sub-stores, so any state
+ * change in any store will trigger a re-render in components using it.
+ * Migrate components to focused sub-store selectors to avoid this.
+ */
 
-
-
-
-
-import { create } from "zustand";
-import type {
-  FileEntry,
-  ParsedFile,
-  GraphData,
-  FileContentResponse,
-  QAHistoryEntry,
-  FileReference,
-  AIStatusResponse,
-  DeadCodeResponse,
-  FunctionGraphResponse,
-  ReadmeResponse,
-  RefactorResponse,
-  SecurityScanResponse,
-  PRReviewResponse,
-  TimelineResponse,
-  CommitDiffResponse,
-  CoverageResponse,
-  CommitEntry,
-  Comment,
-} from "../types";
-
+export { useSessionStore } from "./sessionStore";
+export { useGraphStore } from "./graphStore";
+export { useAiStore } from "./aiStore";
+export { useUiStore } from "./uiStore";
+export { useSettingsStore } from "./settingsStore";
+export type { RecentRepo } from "./uiStore";
 export type { ThemeMode } from "./themeStore";
 
-export interface RecentRepo {
-  name: string;
-  url: string;
-  sourceType: "github" | "zip" | "folder";
-  lastOpened: number;
-}
-
-interface AppState {
-
-  isChatPanelOpen: boolean;
-  showIngestModal: boolean;
-  recentRepos: RecentRepo[];
-
-  sessionId: string | null;
-  repoName: string | null;
-  files: FileEntry[];
-  totalFiles: number;
-  sourceType: string | null;
-  ingestedAt: string | null;
-
-
-  isAnalyzed: boolean;
-  parsedFiles: ParsedFile[];
-  graphData: GraphData | null;
-
-
-  selectedFile: string | null;
-  fileContent: FileContentResponse | null;
-
-
-  aiExplanation: string | null;
-  aiAnalysis: string | null;
-  aiSource: string | null;
-  isAILoading: boolean;
-  isAIStreaming: boolean;
-
-
-  beginnerGuide: string | null;
-  beginnerTopFiles: { path: string; complexity_score: number }[];
-  beginnerSource: string | null;
-  isBeginnerLoading: boolean;
-
-
-  qaHistory: QAHistoryEntry[];
-  isQALoading: boolean;
-
-
-  isLoading: boolean;
-  isAnalyzing: boolean;
-  analysisProgress: { stage: string; current: number; total: number } | null;
-  error: string | null;
-
-
-  settingsPanelOpen: boolean;
-  aiStatus: AIStatusResponse | null;
-
-
-  deadCodeData: DeadCodeResponse | null;
-  showDeadCode: boolean;
-  functionGraphData: FunctionGraphResponse | null;
-  functionGraphFile: string | null;
-  showFunctionGraph: boolean;
-  isDeadCodeLoading: boolean;
-  isFunctionGraphLoading: boolean;
-
-
-  readmeData: ReadmeResponse | null;
-  isReadmeLoading: boolean;
-  refactorData: RefactorResponse | null;
-  isRefactorLoading: boolean;
-  securityData: SecurityScanResponse | null;
-  isSecurityLoading: boolean;
-  prReviewData: PRReviewResponse | null;
-  isPRReviewLoading: boolean;
-
-
-  show3DGraph: boolean;
-
-
-  timelineData: TimelineResponse | null;
-  isTimelineLoading: boolean;
-  selectedCommit: CommitEntry | null;
-  commitDiff: CommitDiffResponse | null;
-  isCommitDiffLoading: boolean;
-  coverageData: CoverageResponse | null;
-  isCoverageLoading: boolean;
-  showCoverage: boolean;
-  highlightedFiles: Set<string>;
-
-
-  comments: Comment[];
-  commentCounts: Record<string, number>;
-  isCommentsLoading: boolean;
-
-
-  toggleChatPanel: () => void;
-  setShowIngestModal: (show: boolean) => void;
-  addRecentRepo: (repo: RecentRepo) => void;
-
-  setSession: (data: {
-    session_id: string;
-    repo_name: string;
-    files: FileEntry[];
-    total_files: number;
-    source_type: string;
-    ingested_at: string;
-  }) => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
-  reset: () => void;
-
-
-  setAnalyzing: (analyzing: boolean) => void;
-  setAnalysisProgress: (progress: { stage: string; current: number; total: number } | null) => void;
-  setAnalysisResult: (parsed: ParsedFile[], graph: GraphData) => void;
-
-
-  setSelectedFile: (path: string | null) => void;
-  setFileContent: (content: FileContentResponse | null) => void;
-
-
-  setAIExplanation: (explanation: string | null, source?: string) => void;
-  setAIAnalysis: (analysis: string | null, source?: string) => void;
-  appendAIAnalysis: (chunk: string) => void;
-  setAILoading: (loading: boolean) => void;
-  setAIStreaming: (streaming: boolean) => void;
-
-
-  setBeginnerGuide: (guide: string, topFiles: { path: string; complexity_score: number }[], source: string) => void;
-  setBeginnerLoading: (loading: boolean) => void;
-
-
-  addQAEntry: (question: string, answer: string, refs: FileReference[], source: string) => void;
-  setQALoading: (loading: boolean) => void;
-
-
-  toggleSettings: () => void;
-  setSettingsPanelOpen: (open: boolean) => void;
-  setAIStatus: (status: AIStatusResponse) => void;
-
-
-  setDeadCodeData: (data: DeadCodeResponse | null) => void;
-  toggleDeadCode: () => void;
-  setDeadCodeLoading: (loading: boolean) => void;
-  setFunctionGraphData: (data: FunctionGraphResponse | null, file: string | null) => void;
-  toggleFunctionGraph: () => void;
-  setFunctionGraphLoading: (loading: boolean) => void;
-
-
-  setReadmeData: (data: ReadmeResponse | null) => void;
-  setReadmeLoading: (loading: boolean) => void;
-  setRefactorData: (data: RefactorResponse | null) => void;
-  setRefactorLoading: (loading: boolean) => void;
-  setSecurityData: (data: SecurityScanResponse | null) => void;
-  setSecurityLoading: (loading: boolean) => void;
-  setPRReviewData: (data: PRReviewResponse | null) => void;
-  setPRReviewLoading: (loading: boolean) => void;
-  toggle3DGraph: () => void;
-
-
-  setTimelineData: (data: TimelineResponse | null) => void;
-  setTimelineLoading: (loading: boolean) => void;
-  setSelectedCommit: (commit: CommitEntry | null) => void;
-  setCommitDiff: (diff: CommitDiffResponse | null) => void;
-  setCommitDiffLoading: (loading: boolean) => void;
-  setCoverageData: (data: CoverageResponse | null) => void;
-  setCoverageLoading: (loading: boolean) => void;
-  toggleCoverage: () => void;
-  setHighlightedFiles: (files: Set<string>) => void;
-
-
-  setComments: (comments: Comment[]) => void;
-  addComment: (comment: Comment) => void;
-  removeComment: (commentId: string) => void;
-  updateComment: (comment: Comment) => void;
-  setCommentCounts: (counts: Record<string, number>) => void;
-  setCommentsLoading: (loading: boolean) => void;
-}
-
-
-
-function getStoredChatPanel(): boolean {
-  try {
-    const stored = localStorage.getItem("ci-chat-panel");
-    if (stored === "false") return false;
-  } catch { /* ignore */ }
-  return true;
-}
-
-function getRecentRepos(): RecentRepo[] {
-  try {
-    const stored = localStorage.getItem("ci-recent-repos");
-    if (stored) return JSON.parse(stored);
-  } catch { /* ignore */ }
-  return [];
-}
-
-const initialState = {
-
-  isChatPanelOpen: getStoredChatPanel(),
-  showIngestModal: false,
-  recentRepos: getRecentRepos(),
-  sessionId: null,
-  repoName: null,
-  files: [],
-  totalFiles: 0,
-  sourceType: null,
-  ingestedAt: null,
-  isAnalyzed: false,
-  parsedFiles: [],
-  graphData: null,
-  selectedFile: null,
-  fileContent: null,
-  aiExplanation: null,
-  aiAnalysis: null,
-  aiSource: null,
-  isAILoading: false,
-  isAIStreaming: false,
-  beginnerGuide: null,
-  beginnerTopFiles: [],
-  beginnerSource: null,
-  isBeginnerLoading: false,
-  qaHistory: [],
-  isQALoading: false,
-  isLoading: false,
-  isAnalyzing: false,
-  analysisProgress: null,
-  error: null,
-  settingsPanelOpen: false,
-  aiStatus: null,
-  deadCodeData: null,
-  showDeadCode: false,
-  functionGraphData: null,
-  functionGraphFile: null,
-  showFunctionGraph: false,
-  isDeadCodeLoading: false,
-  isFunctionGraphLoading: false,
-  readmeData: null,
-  isReadmeLoading: false,
-  refactorData: null,
-  isRefactorLoading: false,
-  securityData: null,
-  isSecurityLoading: false,
-  prReviewData: null,
-  isPRReviewLoading: false,
-  show3DGraph: false,
-  timelineData: null,
-  isTimelineLoading: false,
-  selectedCommit: null,
-  commitDiff: null,
-  isCommitDiffLoading: false,
-  coverageData: null,
-  isCoverageLoading: false,
-  showCoverage: false,
-  highlightedFiles: new Set<string>(),
-  comments: [],
-  commentCounts: {},
-  isCommentsLoading: false,
-};
-
-export const useAppStore = create<AppState>((set) => ({
-  ...initialState,
-
-
-
-  toggleChatPanel: () =>
-    set((state) => {
-      const next = !state.isChatPanelOpen;
-      try { localStorage.setItem("ci-chat-panel", String(next)); } catch { /* ignore */ }
-      return { isChatPanelOpen: next };
-    }),
-
-  setShowIngestModal: (show) => set({ showIngestModal: show }),
-
-  addRecentRepo: (repo) =>
-    set((state) => {
-      const filtered = state.recentRepos.filter((r) => r.url !== repo.url);
-      const updated = [repo, ...filtered].slice(0, 10);
-      try { localStorage.setItem("ci-recent-repos", JSON.stringify(updated)); } catch { /* ignore */ }
-      return { recentRepos: updated };
-    }),
-
-  setSession: (data) =>
-    set({
-      sessionId: data.session_id,
-      repoName: data.repo_name,
-      files: data.files,
-      totalFiles: data.total_files,
-      sourceType: data.source_type,
-      ingestedAt: data.ingested_at,
-      error: null,
-    }),
-
-  setLoading: (loading) => set({ isLoading: loading }),
-  setError: (error) => set({ error, isLoading: false }),
-
-  reset: () => set(initialState),
-
-  setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
-  setAnalysisProgress: (progress) => set({ analysisProgress: progress }),
-  setAnalysisResult: (parsed, graph) =>
-    set({
-      parsedFiles: parsed,
-      graphData: graph,
-      isAnalyzed: true,
-      isAnalyzing: false,
-      analysisProgress: null,
-    }),
-
-  setSelectedFile: (path) =>
-    set({
-      selectedFile: path,
-      fileContent: null,
-      aiExplanation: null,
-      aiAnalysis: null,
-    }),
-
-  setFileContent: (content) => set({ fileContent: content }),
-
-  setAIExplanation: (explanation, source) =>
-    set({ aiExplanation: explanation, aiSource: source || null }),
-  setAIAnalysis: (analysis, source) =>
-    set({ aiAnalysis: analysis, aiSource: source || null, isAIStreaming: false }),
-  appendAIAnalysis: (chunk) =>
-    set((state) => ({ aiAnalysis: (state.aiAnalysis ?? "") + chunk })),
-  setAILoading: (loading) => set({ isAILoading: loading }),
-  setAIStreaming: (streaming) => set({ isAIStreaming: streaming }),
-
-  setBeginnerGuide: (guide, topFiles, source) =>
-    set({
-      beginnerGuide: guide,
-      beginnerTopFiles: topFiles,
-      beginnerSource: source,
-      isBeginnerLoading: false,
-    }),
-  setBeginnerLoading: (loading) => set({ isBeginnerLoading: loading }),
-
-  addQAEntry: (question, answer, refs, source) =>
-    set((state) => ({
-      qaHistory: [
-        ...state.qaHistory,
-        { question, answer, referenced_files: refs, source, timestamp: Date.now() },
-      ],
-      isQALoading: false,
-    })),
-  setQALoading: (loading) => set({ isQALoading: loading }),
-
-  toggleSettings: () => set((state) => ({ settingsPanelOpen: !state.settingsPanelOpen })),
-  setSettingsPanelOpen: (open) => set({ settingsPanelOpen: open }),
-  setAIStatus: (status) => set({ aiStatus: status }),
-
-  setDeadCodeData: (data) => set({ deadCodeData: data, isDeadCodeLoading: false }),
-  toggleDeadCode: () => set((state) => ({ showDeadCode: !state.showDeadCode })),
-  setDeadCodeLoading: (loading) => set({ isDeadCodeLoading: loading }),
-  setFunctionGraphData: (data, file) => set({
-    functionGraphData: data,
-    functionGraphFile: file,
-    showFunctionGraph: !!data,
-    isFunctionGraphLoading: false,
-  }),
-  toggleFunctionGraph: () => set((state) => ({ showFunctionGraph: !state.showFunctionGraph })),
-  setFunctionGraphLoading: (loading) => set({ isFunctionGraphLoading: loading }),
-
-  setReadmeData: (data) => set({ readmeData: data, isReadmeLoading: false }),
-  setReadmeLoading: (loading) => set({ isReadmeLoading: loading }),
-  setRefactorData: (data) => set({ refactorData: data, isRefactorLoading: false }),
-  setRefactorLoading: (loading) => set({ isRefactorLoading: loading }),
-  setSecurityData: (data) => set({ securityData: data, isSecurityLoading: false }),
-  setSecurityLoading: (loading) => set({ isSecurityLoading: loading }),
-  setPRReviewData: (data) => set({ prReviewData: data, isPRReviewLoading: false }),
-  setPRReviewLoading: (loading) => set({ isPRReviewLoading: loading }),
-  toggle3DGraph: () => set((state) => ({ show3DGraph: !state.show3DGraph })),
-
-  setTimelineData: (data) => set({ timelineData: data, isTimelineLoading: false }),
-  setTimelineLoading: (loading) => set({ isTimelineLoading: loading }),
-  setSelectedCommit: (commit) => set({ selectedCommit: commit }),
-  setCommitDiff: (diff) => set({
-    commitDiff: diff,
-    isCommitDiffLoading: false,
-    highlightedFiles: diff ? new Set(diff.files.map((f) => f.path)) : new Set<string>(),
-  }),
-  setCommitDiffLoading: (loading) => set({ isCommitDiffLoading: loading }),
-  setCoverageData: (data) => set({ coverageData: data, isCoverageLoading: false }),
-  setCoverageLoading: (loading) => set({ isCoverageLoading: loading }),
-  toggleCoverage: () => set((state) => ({ showCoverage: !state.showCoverage })),
-  setHighlightedFiles: (files) => set({ highlightedFiles: files }),
-
-  setComments: (comments) => set({ comments, isCommentsLoading: false }),
-  addComment: (comment) => set((state) => ({
-    comments: [comment, ...state.comments],
-    commentCounts: {
-      ...state.commentCounts,
-      [comment.target_id]: (state.commentCounts[comment.target_id] || 0) + 1,
+import { useSessionStore } from "./sessionStore";
+import { useGraphStore } from "./graphStore";
+import { useAiStore } from "./aiStore";
+import { useUiStore } from "./uiStore";
+
+/** Non-hook version for callbacks / event handlers outside React render. */
+export function getAppState() {
+  return {
+    ...useSessionStore.getState(),
+    ...useGraphStore.getState(),
+    ...useAiStore.getState(),
+    ...useUiStore.getState(),
+    setSelectedFile: (path: string | null) => {
+      useSessionStore.getState().setSelectedFile(path);
     },
-  })),
-  removeComment: (commentId) => set((state) => {
-    const removed = state.comments.find((c) => c.id === commentId);
-    return {
-      comments: state.comments.filter((c) => c.id !== commentId),
-      commentCounts: removed
-        ? {
-          ...state.commentCounts,
-          [removed.target_id]: Math.max((state.commentCounts[removed.target_id] || 1) - 1, 0),
-        }
-        : state.commentCounts,
-    };
-  }),
-  updateComment: (comment) => set((state) => ({
-    comments: state.comments.map((c) => c.id === comment.id ? comment : c),
-  })),
-  setCommentCounts: (counts) => set({ commentCounts: counts }),
-  setCommentsLoading: (loading) => set({ isCommentsLoading: loading }),
-}));
+  };
+}
+
+export function useAppStore() {
+  const session = useSessionStore();
+  const graph = useGraphStore();
+  const ai = useAiStore();
+  const ui = useUiStore();
+
+  return {
+    // ---- session ----
+    sessionId: session.sessionId,
+    status: session.status,
+    progress: session.progress,
+    repoUrl: session.repoUrl,
+    repoName: session.repoName,
+    files: session.files,
+    totalFiles: session.totalFiles,
+    sourceType: session.sourceType,
+    ingestedAt: session.ingestedAt,
+    isAnalyzed: session.isAnalyzed,
+    parsedFiles: session.parsedFiles,
+    graphData: session.graphData,
+    selectedFile: session.selectedFile,
+    fileContent: session.fileContent,
+    isLoading: session.isLoading,
+    isAnalyzing: session.isAnalyzing,
+    analysisProgress: session.analysisProgress,
+    error: session.error,
+    setSession: session.setSession,
+    setLoading: session.setLoading,
+    setError: session.setError,
+    reset: session.reset,
+    setAnalyzing: session.setAnalyzing,
+    setAnalysisProgress: session.setAnalysisProgress,
+    setAnalysisResult: session.setAnalysisResult,
+    setFileContent: session.setFileContent,
+    // Override setSelectedFile to also clear AI state
+    setSelectedFile: (path: string | null) => {
+      session.setSelectedFile(path);
+    },
+
+    // ---- graph ----
+    deadCodeData: graph.deadCodeData,
+    showDeadCode: graph.showDeadCode,
+    isDeadCodeLoading: graph.isDeadCodeLoading,
+    functionGraphData: graph.functionGraphData,
+    functionGraphFile: graph.functionGraphFile,
+    showFunctionGraph: graph.showFunctionGraph,
+    isFunctionGraphLoading: graph.isFunctionGraphLoading,
+    timelineData: graph.timelineData,
+    isTimelineLoading: graph.isTimelineLoading,
+    selectedCommit: graph.selectedCommit,
+    commitDiff: graph.commitDiff,
+    isCommitDiffLoading: graph.isCommitDiffLoading,
+    coverageData: graph.coverageData,
+    isCoverageLoading: graph.isCoverageLoading,
+    showCoverage: graph.showCoverage,
+    highlightedFiles: graph.highlightedFiles,
+    setDeadCodeData: graph.setDeadCodeData,
+    toggleDeadCode: graph.toggleDeadCode,
+    setDeadCodeLoading: graph.setDeadCodeLoading,
+    setFunctionGraphData: graph.setFunctionGraphData,
+    toggleFunctionGraph: graph.toggleFunctionGraph,
+    setFunctionGraphLoading: graph.setFunctionGraphLoading,
+    setTimelineData: graph.setTimelineData,
+    setTimelineLoading: graph.setTimelineLoading,
+    setSelectedCommit: graph.setSelectedCommit,
+    setCommitDiff: graph.setCommitDiff,
+    setCommitDiffLoading: graph.setCommitDiffLoading,
+    setCoverageData: graph.setCoverageData,
+    setCoverageLoading: graph.setCoverageLoading,
+    toggleCoverage: graph.toggleCoverage,
+    setHighlightedFiles: graph.setHighlightedFiles,
+
+    // ---- ai ----
+    aiExplanation: ai.aiExplanation,
+    aiAnalysis: ai.aiAnalysis,
+    aiSource: ai.aiSource,
+    isAILoading: ai.isAILoading,
+    isAIStreaming: ai.isAIStreaming,
+    currentProvider: ai.currentProvider,
+    beginnerGuide: ai.beginnerGuide,
+    beginnerTopFiles: ai.beginnerTopFiles,
+    beginnerSource: ai.beginnerSource,
+    isBeginnerLoading: ai.isBeginnerLoading,
+    qaHistory: ai.qaHistory,
+    isQALoading: ai.isQALoading,
+    readmeData: ai.readmeData,
+    isReadmeLoading: ai.isReadmeLoading,
+    refactorData: ai.refactorData,
+    isRefactorLoading: ai.isRefactorLoading,
+    securityData: ai.securityData,
+    isSecurityLoading: ai.isSecurityLoading,
+    prReviewData: ai.prReviewData,
+    isPRReviewLoading: ai.isPRReviewLoading,
+    clearFileAI: ai.clearFileAI,
+    setAIExplanation: ai.setAIExplanation,
+    setAIAnalysis: ai.setAIAnalysis,
+    appendAIAnalysis: ai.appendAIAnalysis,
+    setAILoading: ai.setAILoading,
+    setAIStreaming: ai.setAIStreaming,
+    setBeginnerGuide: ai.setBeginnerGuide,
+    setBeginnerLoading: ai.setBeginnerLoading,
+    addQAEntry: ai.addQAEntry,
+    setQALoading: ai.setQALoading,
+    setReadmeData: ai.setReadmeData,
+    setReadmeLoading: ai.setReadmeLoading,
+    setRefactorData: ai.setRefactorData,
+    setRefactorLoading: ai.setRefactorLoading,
+    setSecurityData: ai.setSecurityData,
+    setSecurityLoading: ai.setSecurityLoading,
+    setPRReviewData: ai.setPRReviewData,
+    setPRReviewLoading: ai.setPRReviewLoading,
+
+    // ---- ui ----
+    isChatPanelOpen: ui.isChatPanelOpen,
+    showIngestModal: ui.showIngestModal,
+    settingsPanelOpen: ui.settingsPanelOpen,
+    show3DGraph: ui.show3DGraph,
+    recentRepos: ui.recentRepos,
+    aiStatus: ui.aiStatus,
+    comments: ui.comments,
+    commentCounts: ui.commentCounts,
+    isCommentsLoading: ui.isCommentsLoading,
+    toggleChatPanel: ui.toggleChatPanel,
+    setShowIngestModal: ui.setShowIngestModal,
+    addRecentRepo: ui.addRecentRepo,
+    toggleSettings: ui.toggleSettings,
+    setSettingsPanelOpen: ui.setSettingsPanelOpen,
+    setAIStatus: ui.setAIStatus,
+    toggle3DGraph: ui.toggle3DGraph,
+    setComments: ui.setComments,
+    addComment: ui.addComment,
+    removeComment: ui.removeComment,
+    updateComment: ui.updateComment,
+    setCommentCounts: ui.setCommentCounts,
+    setCommentsLoading: ui.setCommentsLoading,
+  };
+}

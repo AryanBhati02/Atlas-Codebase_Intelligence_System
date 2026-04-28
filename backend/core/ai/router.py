@@ -1,16 +1,17 @@
 """
-AI Router — orchestrates prompt routing across providers with fallback chain.
+AI Router — orchestrates prompt routing across providers with fallback chain
+and per-provider exponential-backoff retry logic.
 
 Priority chain: Cache → Ollama (local) → Groq → Gemini → Mistral → HuggingFace
-Each provider has both a blocking caller (route_prompt) and an async-generator
-streaming caller (route_stream) that yields tokens as they arrive.
-Tracks per-provider stats (request count, latency) in a SQLite stats table.
-Automatically skips exhausted (rate-limited) providers.
+Retry policy:
+  - RateLimitError: wait 2^attempt seconds, retry up to 2 times, then mark exhausted
+  - ProviderError / any other: skip to next provider immediately
+  - All providers fail: raise ProviderUnavailableError
 """
 
+import asyncio
 import json
 import time
-import logging
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -19,6 +20,8 @@ from typing import AsyncGenerator, Optional
 
 import httpx
 
+from core.logger import get_logger
+from core.errors import ProviderUnavailableError
 from core.ai.free_api import (
     call_groq,
     call_gemini,
@@ -34,7 +37,7 @@ from core.ai.free_api import (
     reload_keys as _reload_provider_keys,
 )
 
-logger = logging.getLogger("codebase-intel.router")
+logger = get_logger("atlas.ai.router")
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +48,8 @@ OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 _ollama_model = "phi3:mini"
 OLLAMA_MODEL = _ollama_model
 OLLAMA_TIMEOUT = 60.0
+
+_MAX_RATE_LIMIT_RETRIES = 2  # retry up to 2 times before marking exhausted
 
 
 def get_ollama_model() -> str:
@@ -97,11 +102,11 @@ def _log_stat(provider: str, latency_ms: float, success: bool) -> None:
             conn.commit()
             conn.close()
     except Exception as e:
-        logger.debug(f"Stats logging failed for {provider}: {e}")
+        logger.debug("Stats logging failed", extra={"provider": provider, "error": str(e)})
 
 
-def get_provider_stats() -> dict[str, dict]:
-    result: dict[str, dict] = {}
+def get_provider_stats() -> dict[str, dict]:  # type: ignore[type-arg]
+    result: dict[str, dict] = {}  # type: ignore[type-arg]
     try:
         conn = _get_stats_db()
         rows = conn.execute("""
@@ -121,7 +126,7 @@ def get_provider_stats() -> dict[str, dict]:
                 "avg_latency_ms": round(row[3], 1) if row[3] else 0,
             }
     except Exception as e:
-        logger.warning(f"Failed to read provider stats: {e}")
+        logger.warning("Failed to read provider stats", extra={"error": str(e)})
     for p in PROVIDER_CHAIN:
         if p not in result:
             result[p] = {"requests_today": 0, "successes": 0, "avg_latency_ms": 0}
@@ -135,7 +140,7 @@ def clear_stats() -> None:
         conn.commit()
         conn.close()
     except Exception as e:
-        logger.warning(f"Failed to clear stats: {e}")
+        logger.warning("Failed to clear stats", extra={"error": str(e)})
 
 
 # ---------------------------------------------------------------------------
@@ -198,32 +203,87 @@ _CALLERS = {
 }
 
 
-async def route_prompt(prompt: str) -> tuple[Optional[str], str]:
+async def _call_with_retry(provider: str, prompt: str) -> str:
     """
-    Route a prompt through the provider chain with automatic fallback.
-    Returns (response_text, provider_name) on success, (None, "none") if all fail.
+    Call a provider with exponential backoff on RateLimitError.
+    Raises ProviderUnavailableError if all retries are exhausted.
+    Raises ProviderError immediately for non-rate-limit failures.
     """
-    chain = get_ordered_providers()
-    for provider in chain:
-        if not _is_provider_available(provider):
-            continue
-        caller = _CALLERS.get(provider)
-        if not caller:
-            continue
+    caller = _CALLERS.get(provider)
+    if not caller:
+        raise ProviderError(f"No caller registered for {provider}")
+
+    last_exc: Exception = ProviderError(f"{provider} failed before first attempt")
+
+    for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):  # 0, 1, 2
         start = time.time()
         try:
             result = await caller(prompt)
             _log_stat(provider, (time.time() - start) * 1000, success=True)
-            logger.info(f"route_prompt: served by {provider}")
-            return result, provider
-        except RateLimitError:
+            logger.info(
+                "AI call succeeded",
+                extra={"provider": provider, "duration_ms": round((time.time() - start) * 1000)},
+            )
+            return result
+        except RateLimitError as exc:
             _log_stat(provider, (time.time() - start) * 1000, success=False)
+            last_exc = exc
+            if attempt < _MAX_RATE_LIMIT_RETRIES:
+                wait_secs = 2 ** attempt  # 1s, 2s
+                logger.warning(
+                    "Rate limit hit — retrying",
+                    extra={"provider": provider, "attempt": attempt + 1, "wait_secs": wait_secs},
+                )
+                await asyncio.sleep(wait_secs)
+            else:
+                mark_exhausted(provider)
+                logger.warning(
+                    "Provider exhausted after retries",
+                    extra={"provider": provider},
+                )
+                raise ProviderUnavailableError(f"{provider} is rate-limited and exhausted") from exc
+        except ProviderError as exc:
+            _log_stat(provider, (time.time() - start) * 1000, success=False)
+            logger.debug("Provider error", extra={"provider": provider, "error": str(exc)})
+            raise
+        except Exception as exc:
+            _log_stat(provider, (time.time() - start) * 1000, success=False)
+            logger.warning("Unexpected provider error", extra={"provider": provider, "error": str(exc)})
+            raise ProviderError(str(exc)) from exc
+
+    # Unreachable but satisfies type checker
+    raise ProviderUnavailableError(f"{provider} failed all attempts") from last_exc
+
+
+async def route_prompt(prompt: str) -> tuple[Optional[str], str]:
+    """
+    Route a prompt through the provider chain with automatic fallback.
+    Raises ProviderUnavailableError if all providers fail.
+    Returns (response_text, provider_name).
+    """
+    chain = get_ordered_providers()
+    errors: list[str] = []
+
+    for provider in chain:
+        if not _is_provider_available(provider):
+            continue
+        try:
+            result = await _call_with_retry(provider, prompt)
+            return result, provider
+        except ProviderUnavailableError:
+            errors.append(f"{provider}: exhausted")
+            continue
+        except ProviderError as e:
+            errors.append(f"{provider}: {e}")
             continue
         except Exception as e:
-            _log_stat(provider, (time.time() - start) * 1000, success=False)
-            logger.debug(f"route_prompt {provider} failed: {e}")
+            errors.append(f"{provider}: {e}")
             continue
-    return None, "none"
+
+    logger.error("All AI providers failed", extra={"errors": errors})
+    raise ProviderUnavailableError(
+        f"All providers failed: {'; '.join(errors)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -286,9 +346,11 @@ async def _stream_groq(prompt: str) -> AsyncGenerator[str, None]:
                     return
                 try:
                     data = json.loads(data_str)
-                    delta = data["choices"][0]["delta"].get("content", "")
-                    if delta:
-                        yield delta
+                    choices = data.get("choices") or []
+                    if choices:
+                        delta = choices[0].get("delta", {}).get("content", "")
+                        if delta:
+                            yield delta
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
 
@@ -320,15 +382,13 @@ async def _stream_gemini(prompt: str) -> AsyncGenerator[str, None]:
                     continue
                 try:
                     data = json.loads(line[6:])
-                    parts = (
-                        data.get("candidates", [{}])[0]
-                        .get("content", {})
-                        .get("parts", [])
-                    )
-                    if parts:
-                        text = parts[0].get("text", "")
-                        if text:
-                            yield text
+                    candidates = data.get("candidates") or []
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts") or []
+                        if parts:
+                            text = parts[0].get("text", "")
+                            if text:
+                                yield text
                 except (json.JSONDecodeError, IndexError, KeyError):
                     continue
 
@@ -364,15 +424,17 @@ async def _stream_mistral(prompt: str) -> AsyncGenerator[str, None]:
                     return
                 try:
                     data = json.loads(data_str)
-                    delta = data["choices"][0]["delta"].get("content", "")
-                    if delta:
-                        yield delta
+                    choices = data.get("choices") or []
+                    if choices:
+                        delta = choices[0].get("delta", {}).get("content", "")
+                        if delta:
+                            yield delta
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
 
 
 async def _stream_huggingface(prompt: str) -> AsyncGenerator[str, None]:
-    """HuggingFace inference API — collect full response and yield as single chunk."""
+    """HuggingFace inference API — collect full response, yield as single chunk."""
     result = await call_huggingface(prompt)
     if result:
         yield result
@@ -393,12 +455,12 @@ _STREAM_CALLERS: dict[str, object] = {
 
 async def route_stream(prompt: str) -> AsyncGenerator[str, None]:
     """
-    Route a prompt through the provider chain and stream tokens as they arrive.
+    Route a prompt and stream tokens as they arrive.
 
-    Tries providers in priority order. Falls back to the next provider if
-    the current one raises an exception BEFORE yielding any tokens.
-    Once tokens have started flowing, errors end the stream silently.
-    Yields at least one fallback message if every provider fails.
+    Tries providers in priority order.  Falls back to the next provider if
+    the current one raises before yielding any tokens.  Once tokens have
+    started flowing, errors end the stream silently.
+    Yields a fallback message if every provider fails.
     """
     chain = get_ordered_providers()
 
@@ -410,34 +472,37 @@ async def route_stream(prompt: str) -> AsyncGenerator[str, None]:
         if not streamer:
             continue
 
-        logger.info(f"route_stream: attempting {provider}")
+        logger.info("Attempting stream", extra={"provider": provider})
         start = time.time()
         chunks_sent = 0
 
         try:
-            async for chunk in streamer(prompt):  # type: ignore[attr-defined]
+            async for chunk in streamer(prompt):  # type: ignore[union-attr]
                 yield chunk
                 chunks_sent += 1
 
             _log_stat(provider, (time.time() - start) * 1000, success=True)
-            logger.info(f"route_stream: completed via {provider} ({chunks_sent} chunks)")
+            logger.info(
+                "Stream completed",
+                extra={"provider": provider, "chunks": chunks_sent,
+                       "duration_ms": round((time.time() - start) * 1000)},
+            )
             return
 
         except RateLimitError:
             _log_stat(provider, (time.time() - start) * 1000, success=False)
             if chunks_sent > 0:
-                return  # Already streaming — can't switch providers mid-response
-            logger.warning(f"route_stream: {provider} rate-limited, trying next")
+                return
+            logger.warning("Stream rate-limited", extra={"provider": provider})
             continue
 
         except Exception as e:
             _log_stat(provider, (time.time() - start) * 1000, success=False)
             if chunks_sent > 0:
                 return
-            logger.warning(f"route_stream: {provider} failed ({e}), trying next")
+            logger.warning("Stream failed", extra={"provider": provider, "error": str(e)})
             continue
 
-    # All providers failed with no output
     yield (
         "\n\n*No AI provider available. Configure API keys in Settings "
         "(Groq, Gemini, Mistral, or HuggingFace) or start Ollama locally.*"

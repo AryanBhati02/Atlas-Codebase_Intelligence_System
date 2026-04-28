@@ -1,4 +1,14 @@
-import axios from "axios";
+/**
+ * All typed API wrappers.  Every call goes through the configured client
+ * from client.ts which handles retries, session headers, and error toasts.
+ *
+ * Cancellable calls return { promise, cancel } so components can abort
+ * superseded requests inside useEffect cleanup.
+ */
+
+export { client } from "./client";
+
+import { client } from "./client";
 import type {
   AnalyzeResponse,
   GraphData,
@@ -26,126 +36,172 @@ import type {
   ShareTokenResponse,
 } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
-
-export const client = axios.create({
-  baseURL: API_BASE,
-  timeout: 180_000,
-});
-
+// ---------------------------------------------------------------------------
+// Analysis
+// ---------------------------------------------------------------------------
 
 export async function analyzeSession(
   sessionId: string
 ): Promise<AnalyzeResponse> {
-  const res = await client.post<AnalyzeResponse>(`/analyze/${sessionId}`);
+  const res = await client.post<AnalyzeResponse>(`/api/analyze/${sessionId}`);
   return res.data;
 }
 
-
-
-
-
-
+export interface CancellableAnalysis {
+  promise: Promise<AnalyzeResponse>;
+  abort: () => void;
+}
 
 export function analyzeWithProgress(
   sessionId: string,
   onProgress: (stage: string, current: number, total: number) => void
-): { promise: Promise<AnalyzeResponse>; abort: () => void } {
+): CancellableAnalysis {
   let aborted = false;
 
-  const promise = new Promise<AnalyzeResponse>(async (resolve, reject) => {
-    try {
+  const promise = new Promise<AnalyzeResponse>((resolve, reject) => {
+    void (async () => {
+      try {
+        await client.post(`/api/analyze/start/${sessionId}`);
 
-      console.log("[Analysis] Starting analysis for", sessionId);
-      const startRes = await client.post(`/analyze/start/${sessionId}`);
-      console.log("[Analysis] Start response:", startRes.data);
-
-      if (aborted) { reject(new Error("Aborted")); return; }
-
-
-      let consecutiveErrors = 0;
-      const MAX_RETRIES = 3;
-
-      while (!aborted) {
-        await new Promise((r) => setTimeout(r, 500));
-        if (aborted) break;
-
-        try {
-          const { data: prog } = await client.get<{
-            stage: string;
-            current: number;
-            total: number;
-            done: boolean;
-            error: string | null;
-          }>(`/analyze/progress/${sessionId}`);
-
-          consecutiveErrors = 0;
-          onProgress(prog.stage, prog.current, prog.total);
-
-          if (prog.error) {
-            console.error("[Analysis] Backend error:", prog.error);
-            reject(new Error(prog.error));
-            return;
-          }
-
-          if (prog.done) {
-            console.log("[Analysis] Done, fetching results...");
-
-            const res = await client.post<AnalyzeResponse>(`/analyze/${sessionId}`);
-            console.log("[Analysis] Results fetched:", res.data.total_files, "files");
-            resolve(res.data);
-            return;
-          }
-        } catch (pollErr) {
-          consecutiveErrors++;
-          console.warn(`[Analysis] Poll error (${consecutiveErrors}/${MAX_RETRIES}):`, pollErr);
-          if (consecutiveErrors >= MAX_RETRIES) {
-            reject(new Error("Lost connection to analysis server."));
-            return;
-          }
-
-          await new Promise((r) => setTimeout(r, 1000));
+        if (aborted) {
+          reject(new Error("Aborted"));
+          return;
         }
+
+        let consecutiveErrors = 0;
+        const MAX_CONSECUTIVE_ERRORS = 3;
+
+        while (!aborted) {
+          await new Promise<void>((r) => setTimeout(r, 500));
+          if (aborted) break;
+
+          try {
+            const { data: prog } = await client.get<{
+              stage: string;
+              current: number;
+              total: number;
+              done: boolean;
+              error: string | null;
+            }>(`/api/analyze/progress/${sessionId}`);
+
+            consecutiveErrors = 0;
+            onProgress(prog.stage, prog.current, prog.total);
+
+            if (prog.error) {
+              reject(new Error(prog.error));
+              return;
+            }
+
+            if (prog.done) {
+              const res = await client.post<AnalyzeResponse>(
+                `/api/analyze/${sessionId}`
+              );
+              resolve(res.data);
+              return;
+            }
+          } catch (pollErr: unknown) {
+            consecutiveErrors++;
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+              reject(new Error("Lost connection to analysis server."));
+              return;
+            }
+            await new Promise<void>((r) => setTimeout(r, 1_000));
+          }
+        }
+
+        if (aborted) reject(new Error("Aborted"));
+      } catch (err: unknown) {
+        reject(err);
       }
-      if (aborted) reject(new Error("Aborted"));
-    } catch (err) {
-      console.error("[Analysis] Fatal error:", err);
-      reject(err);
-    }
+    })();
   });
 
   return { promise, abort: () => { aborted = true; } };
 }
 
 export async function getGraph(sessionId: string): Promise<GraphData> {
-  const res = await client.get<GraphData>(`/analyze/graph/${sessionId}`);
+  const res = await client.get<GraphData>(`/api/analyze/graph/${sessionId}`);
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// Files
+// ---------------------------------------------------------------------------
+
+export interface CancellableFileContent {
+  promise: Promise<FileContentResponse>;
+  cancel: () => void;
+}
+
+export function getFileContentCancellable(
+  sessionId: string,
+  path: string
+): CancellableFileContent {
+  const controller = new AbortController();
+  const promise = client
+    .get<FileContentResponse>(`/api/files/content/${sessionId}`, {
+      params: { path },
+      signal: controller.signal,
+    })
+    .then((r) => r.data);
+  return { promise, cancel: () => controller.abort() };
+}
 
 export async function getFileContent(
   sessionId: string,
   path: string
 ): Promise<FileContentResponse> {
   const res = await client.get<FileContentResponse>(
-    `/files/content/${sessionId}`,
+    `/api/files/content/${sessionId}`,
     { params: { path } }
   );
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// AI — basic
+// ---------------------------------------------------------------------------
+
+export interface CancellableRequest<T> {
+  promise: Promise<T>;
+  cancel: () => void;
+}
+
+function cancellable<T>(
+  requestFn: (signal: AbortSignal) => Promise<T>
+): CancellableRequest<T> {
+  const controller = new AbortController();
+  return {
+    promise: requestFn(controller.signal),
+    cancel: () => controller.abort(),
+  };
+}
+
+export function explainFileCancellable(
+  sessionId: string,
+  filePath: string
+): CancellableRequest<AIExplainResponse> {
+  return cancellable((signal) =>
+    client
+      .post<AIExplainResponse>(
+        "/api/ai/explain",
+        { session_id: sessionId, file_path: filePath },
+        { signal }
+      )
+      .then((r) => r.data)
+  );
+}
 
 export async function explainFile(
   sessionId: string,
   filePath: string
 ): Promise<AIExplainResponse> {
-  const res = await client.post<AIExplainResponse>("/ai/explain", {
+  const res = await client.post<AIExplainResponse>("/api/ai/explain", {
     session_id: sessionId,
     file_path: filePath,
   });
   return res.data;
 }
-
 
 export async function analyzeCode(
   sessionId: string,
@@ -154,7 +210,7 @@ export async function analyzeCode(
   startLine: number = 0,
   endLine: number = 0
 ): Promise<AIAnalyzeCodeResponse> {
-  const res = await client.post<AIAnalyzeCodeResponse>("/ai/analyze-code", {
+  const res = await client.post<AIAnalyzeCodeResponse>("/api/ai/analyze-code", {
     session_id: sessionId,
     file_path: filePath,
     code,
@@ -164,37 +220,48 @@ export async function analyzeCode(
   return res.data;
 }
 
-
 export async function getBeginnerGuide(
   sessionId: string
 ): Promise<BeginnerGuideResponse> {
-  const res = await client.post<BeginnerGuideResponse>("/ai/beginner-guide", {
+  const res = await client.post<BeginnerGuideResponse>("/api/ai/beginner-guide", {
     session_id: sessionId,
   });
   return res.data;
 }
 
+export function askQuestionCancellable(
+  sessionId: string,
+  question: string
+): CancellableRequest<QAResponse> {
+  return cancellable((signal) =>
+    client
+      .post<QAResponse>("/api/ai/qa", { session_id: sessionId, question }, { signal })
+      .then((r) => r.data)
+  );
+}
 
 export async function askQuestion(
   sessionId: string,
   question: string
 ): Promise<QAResponse> {
-  const res = await client.post<QAResponse>("/ai/qa", {
+  const res = await client.post<QAResponse>("/api/ai/qa", {
     session_id: sessionId,
     question,
   });
   return res.data;
 }
 
-
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
 
 export async function getSettings(): Promise<SettingsResponse> {
-  const res = await client.get<SettingsResponse>("/settings");
+  const res = await client.get<SettingsResponse>("/api/settings");
   return res.data;
 }
 
 export async function getAIStatus(): Promise<AIStatusResponse> {
-  const res = await client.get<AIStatusResponse>("/settings/status");
+  const res = await client.get<AIStatusResponse>("/api/settings/status");
   return res.data;
 }
 
@@ -202,7 +269,7 @@ export async function updateProviderKey(
   provider: string,
   key: string
 ): Promise<KeyUpdateResponse> {
-  const res = await client.post<KeyUpdateResponse>("/settings/keys", {
+  const res = await client.post<KeyUpdateResponse>("/api/settings/keys", {
     provider,
     key,
   });
@@ -212,7 +279,7 @@ export async function updateProviderKey(
 export async function testProvider(
   provider: string
 ): Promise<TestProviderResponse> {
-  const res = await client.post<TestProviderResponse>("/settings/test", {
+  const res = await client.post<TestProviderResponse>("/api/settings/test", {
     provider,
   });
   return res.data;
@@ -221,17 +288,18 @@ export async function testProvider(
 export async function setPreferLocal(
   preferLocal: boolean
 ): Promise<{ prefer_local: boolean; active_provider: string }> {
-  const res = await client.post("/settings/prefer", {
-    prefer_local: preferLocal,
-  });
+  const res = await client.post<{ prefer_local: boolean; active_provider: string }>(
+    "/api/settings/prefer",
+    { prefer_local: preferLocal }
+  );
   return res.data;
 }
 
 export async function clearAICache(
   sessionId?: string
 ): Promise<ClearCacheResponse> {
-  const res = await client.post<ClearCacheResponse>("/settings/clear-cache", {
-    session_id: sessionId || null,
+  const res = await client.post<ClearCacheResponse>("/api/settings/clear-cache", {
+    session_id: sessionId ?? null,
   });
   return res.data;
 }
@@ -240,86 +308,138 @@ export async function getOllamaModels(): Promise<{
   models: { name: string; size: string; modified_at: string }[];
   reachable: boolean;
 }> {
-  const res = await client.get("/settings/ollama-models");
+  const res = await client.get<{
+    models: { name: string; size: string; modified_at: string }[];
+    reachable: boolean;
+  }>("/api/settings/ollama-models");
   return res.data;
 }
 
-export async function selectModel(model: string): Promise<{ model: string; status: string }> {
-  const res = await client.post("/settings/select-model", { model });
+export async function selectModel(
+  model: string
+): Promise<{ model: string; status: string }> {
+  const res = await client.post<{ model: string; status: string }>(
+    "/api/settings/select-model",
+    { model }
+  );
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// Static analysis
+// ---------------------------------------------------------------------------
 
 export async function getDeadCode(
   sessionId: string
 ): Promise<DeadCodeResponse> {
   const res = await client.get<DeadCodeResponse>(
-    `/analysis/dead-code/${sessionId}`
+    `/api/analysis/dead-code/${sessionId}`
   );
   return res.data;
 }
-
 
 export async function getFunctionGraph(
   sessionId: string,
   filePath: string
 ): Promise<FunctionGraphResponse> {
   const res = await client.get<FunctionGraphResponse>(
-    `/analysis/function-graph/${sessionId}`,
+    `/api/analysis/function-graph/${sessionId}`,
     { params: { file: filePath } }
   );
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// Advanced AI
+// ---------------------------------------------------------------------------
+
+export function generateReadmeCancellable(
+  sessionId: string
+): CancellableRequest<ReadmeResponse> {
+  return cancellable((signal) =>
+    client
+      .post<ReadmeResponse>("/api/ai/advanced/readme", { session_id: sessionId }, { signal })
+      .then((r) => r.data)
+  );
+}
 
 export async function generateReadme(
   sessionId: string
 ): Promise<ReadmeResponse> {
-  const res = await client.post<ReadmeResponse>("/ai/advanced/readme", {
+  const res = await client.post<ReadmeResponse>("/api/ai/advanced/readme", {
     session_id: sessionId,
   });
   return res.data;
 }
 
+export function getRefactorSuggestionsCancellable(
+  sessionId: string,
+  filePath: string
+): CancellableRequest<RefactorResponse> {
+  return cancellable((signal) =>
+    client
+      .post<RefactorResponse>(
+        "/api/ai/advanced/refactor",
+        { session_id: sessionId, file_path: filePath },
+        { signal }
+      )
+      .then((r) => r.data)
+  );
+}
 
 export async function getRefactorSuggestions(
   sessionId: string,
   filePath: string
 ): Promise<RefactorResponse> {
-  const res = await client.post<RefactorResponse>("/ai/advanced/refactor", {
+  const res = await client.post<RefactorResponse>("/api/ai/advanced/refactor", {
     session_id: sessionId,
     file_path: filePath,
   });
   return res.data;
 }
 
+export function runSecurityScanCancellable(
+  sessionId: string
+): CancellableRequest<SecurityScanResponse> {
+  return cancellable((signal) =>
+    client
+      .post<SecurityScanResponse>(
+        "/api/ai/advanced/security",
+        { session_id: sessionId },
+        { signal }
+      )
+      .then((r) => r.data)
+  );
+}
 
 export async function runSecurityScan(
   sessionId: string
 ): Promise<SecurityScanResponse> {
-  const res = await client.post<SecurityScanResponse>("/ai/advanced/security", {
+  const res = await client.post<SecurityScanResponse>("/api/ai/advanced/security", {
     session_id: sessionId,
   });
   return res.data;
 }
 
-
 export async function generatePRReview(
   sessionId: string,
   filePaths: string[] = []
 ): Promise<PRReviewResponse> {
-  const res = await client.post<PRReviewResponse>("/ai/advanced/pr-review", {
+  const res = await client.post<PRReviewResponse>("/api/ai/advanced/pr-review", {
     session_id: sessionId,
     file_paths: filePaths,
   });
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// Git
+// ---------------------------------------------------------------------------
 
 export async function getGitTimeline(
   sessionId: string
 ): Promise<TimelineResponse> {
-  const res = await client.get<TimelineResponse>(`/git/timeline/${sessionId}`);
+  const res = await client.get<TimelineResponse>(`/api/git/timeline/${sessionId}`);
   return res.data;
 }
 
@@ -328,7 +448,7 @@ export async function getCommitDiff(
   commitHash: string
 ): Promise<CommitDiffResponse> {
   const res = await client.get<CommitDiffResponse>(
-    `/git/diff/${sessionId}?commit=${commitHash}`
+    `/api/git/diff/${sessionId}?commit=${commitHash}`
   );
   return res.data;
 }
@@ -336,10 +456,13 @@ export async function getCommitDiff(
 export async function getCoverage(
   sessionId: string
 ): Promise<CoverageResponse> {
-  const res = await client.get<CoverageResponse>(`/git/coverage/${sessionId}`);
+  const res = await client.get<CoverageResponse>(`/api/git/coverage/${sessionId}`);
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// Collaboration
+// ---------------------------------------------------------------------------
 
 export async function postComment(
   sessionId: string,
@@ -347,53 +470,61 @@ export async function postComment(
   targetId: string,
   message: string,
   author?: string,
-  parentId?: string,
+  parentId?: string
 ): Promise<Comment> {
-  const res = await client.post<Comment>("/comments", {
+  const res = await client.post<Comment>("/api/comments", {
     session_id: sessionId,
     target_type: targetType,
     target_id: targetId,
     message,
-    author: author || "Anonymous",
-    parent_id: parentId || null,
+    author: author ?? "Anonymous",
+    parent_id: parentId ?? null,
   });
   return res.data;
 }
 
 export async function getComments(
   sessionId: string,
-  targetId?: string,
+  targetId?: string
 ): Promise<Comment[]> {
-  const params = targetId ? `?target_id=${encodeURIComponent(targetId)}` : "";
-  const res = await client.get<Comment[]>(`/comments/${sessionId}${params}`);
+  const params = targetId
+    ? `?target_id=${encodeURIComponent(targetId)}`
+    : "";
+  const res = await client.get<Comment[]>(`/api/comments/${sessionId}${params}`);
   return res.data;
 }
 
 export async function getCommentCounts(
-  sessionId: string,
+  sessionId: string
 ): Promise<CommentCountsResponse> {
-  const res = await client.get<CommentCountsResponse>(`/comments/${sessionId}/counts`);
+  const res = await client.get<CommentCountsResponse>(
+    `/api/comments/${sessionId}/counts`
+  );
   return res.data;
 }
 
 export async function resolveComment(
   sessionId: string,
-  commentId: string,
+  commentId: string
 ): Promise<Comment> {
-  const res = await client.patch<Comment>(`/comments/${sessionId}/resolve/${commentId}`);
+  const res = await client.patch<Comment>(
+    `/api/comments/${sessionId}/resolve/${commentId}`
+  );
   return res.data;
 }
 
 export async function deleteComment(
   sessionId: string,
-  commentId: string,
+  commentId: string
 ): Promise<void> {
-  await client.delete(`/comments/${sessionId}/${commentId}`);
+  await client.delete(`/api/comments/${sessionId}/${commentId}`);
 }
 
 export async function getShareToken(
-  sessionId: string,
+  sessionId: string
 ): Promise<ShareTokenResponse> {
-  const res = await client.get<ShareTokenResponse>(`/comments/${sessionId}/share`);
+  const res = await client.get<ShareTokenResponse>(
+    `/api/comments/${sessionId}/share`
+  );
   return res.data;
 }

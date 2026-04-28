@@ -133,7 +133,7 @@ function getCoverageClass(pct: number): string {
 function hexToRgb(hex: string): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
-    ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+    ? `${parseInt(result[1] ?? "7c", 16)}, ${parseInt(result[2] ?? "6e", 16)}, ${parseInt(result[3] ?? "e0", 16)}`
     : "124, 110, 224";
 }
 

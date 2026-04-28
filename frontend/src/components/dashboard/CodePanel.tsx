@@ -1,10 +1,5 @@
-
-
-
-
-
 import React, { useState, useRef, useEffect } from "react";
-import Editor from "@monaco-editor/react";
+import Editor, { type OnMount } from "@monaco-editor/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileCode2,
@@ -21,11 +16,15 @@ import {
   GitFork,
   MessageSquare,
 } from "lucide-react";
-import { useAppStore } from "../../store/appStore";
+import { useSessionStore } from "../../store/sessionStore";
+import { useAiStore } from "../../store/aiStore";
 import { useThemeStore } from "../../store/themeStore";
 import { streamAI } from "../../api/aiStream";
 import { AIPanel } from "./AIPanel";
 import { CollaborationPanel } from "../collaboration/CollaborationPanel";
+
+// Derive the Monaco editor instance type without depending on the package internals
+type MonacoEditor = Parameters<OnMount>[0];
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -53,31 +52,29 @@ function mapLanguage(lang: string | null | undefined): string {
     Ruby: "ruby",
     PHP: "php",
   };
-  return map[lang] || "plaintext";
+  return map[lang] ?? "plaintext";
 }
 
 type Tab = "code" | "ai" | "collab";
 
 export function CodePanel() {
-  const {
-    selectedFile,
-    fileContent,
-    sessionId,
-    parsedFiles,
-    setAIAnalysis,
-    appendAIAnalysis,
-    setAIStreaming,
-    isAIStreaming,
-  } = useAppStore();
+  const selectedFile = useSessionStore((s) => s.selectedFile);
+  const fileContent = useSessionStore((s) => s.fileContent);
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const parsedFiles = useSessionStore((s) => s.parsedFiles);
+
+  const setAIAnalysis = useAiStore((s) => s.setAIAnalysis);
+  const appendAIAnalysis = useAiStore((s) => s.appendAIAnalysis);
+  const setAIStreaming = useAiStore((s) => s.setAIStreaming);
+  const isAIStreaming = useAiStore((s) => s.isAIStreaming);
 
   const theme = useThemeStore((s) => s.theme);
   const [activeTab, setActiveTab] = useState<Tab>("code");
-  const editorRef = useRef<any>(null);
-
+  const editorRef = useRef<MonacoEditor | null>(null);
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
+      const detail = (e as CustomEvent<{ line?: number }>).detail;
       if (editorRef.current && detail?.line) {
         editorRef.current.revealLineInCenter(detail.line);
         editorRef.current.setPosition({ lineNumber: detail.line, column: 1 });
@@ -86,7 +83,6 @@ export function CodePanel() {
     window.addEventListener("scroll-to-line", handler);
     return () => window.removeEventListener("scroll-to-line", handler);
   }, []);
-
 
   useEffect(() => {
     const switchToAI = () => setActiveTab("ai");
@@ -100,17 +96,17 @@ export function CodePanel() {
 
   const parsedData = parsedFiles.find((f) => f.path === selectedFile);
 
-  const handleEditorMount = (editor: any) => {
+  const handleEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
   };
 
   const handleAnalyzeSelection = () => {
     if (!editorRef.current || !sessionId || !selectedFile) return;
     const selection = editorRef.current.getSelection();
+    if (!selection) return;
     const selectedCode = editorRef.current.getModel()?.getValueInRange(selection);
     if (!selectedCode?.trim()) return;
 
-    // Clear previous analysis and switch to AI tab
     setAIAnalysis("", undefined);
     setAIStreaming(true);
     setActiveTab("ai");
@@ -129,13 +125,15 @@ export function CodePanel() {
         onDone: () => setAIStreaming(false),
         onError: () => {
           setAIStreaming(false);
-          setAIAnalysis("Failed to analyse selection. Please try again.", "error");
+          setAIAnalysis(
+            "Failed to analyse selection. Please try again.",
+            "error"
+          );
         },
       },
       "POST"
     );
   };
-
 
   if (!selectedFile) {
     return (
@@ -158,10 +156,16 @@ export function CodePanel() {
             >
               <Code2 className="w-5 h-5 text-accent-gold/50" />
             </div>
-            <p className="text-[11px] font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+            <p
+              className="text-[11px] font-medium mb-1"
+              style={{ color: "var(--text-secondary)" }}
+            >
               Select a file to view
             </p>
-            <p className="text-[10px] mb-5" style={{ color: "var(--text-muted)" }}>
+            <p
+              className="text-[10px] mb-5"
+              style={{ color: "var(--text-muted)" }}
+            >
               Click a file in the explorer or a node in the graph
             </p>
 
@@ -197,33 +201,50 @@ export function CodePanel() {
 
   return (
     <>
-      { }
       <div className="panel-header flex-col items-start gap-1.5">
         <div className="flex items-center gap-2 w-full">
           <FileCode2 className="w-3 h-3 text-accent-gold/60 shrink-0" />
-          <span className="text-[10.5px] font-medium truncate flex-1 font-mono" style={{ color: "var(--text-primary)" }}>
+          <span
+            className="text-[10.5px] font-medium truncate flex-1 font-mono"
+            style={{ color: "var(--text-primary)" }}
+          >
             {selectedFile}
           </span>
         </div>
 
-        { }
         {parsedData && (
           <div className="flex items-center gap-2 w-full">
             <MemoStatChip icon={Hash} value={`${parsedData.loc}`} label="LOC" />
-            <MemoStatChip icon={HardDrive} value={formatBytes(parsedData.size_bytes)} />
-            <MemoStatChip icon={Activity} value={`${(parsedData.complexity_score * 100).toFixed(0)}%`} />
+            <MemoStatChip
+              icon={HardDrive}
+              value={formatBytes(parsedData.size_bytes)}
+            />
+            <MemoStatChip
+              icon={Activity}
+              value={`${(parsedData.complexity_score * 100).toFixed(0)}%`}
+            />
             {parsedData.functions.length > 0 && (
-              <MemoStatChip icon={GitFork} value={`${parsedData.functions.length}`} label="fn" />
+              <MemoStatChip
+                icon={GitFork}
+                value={`${parsedData.functions.length}`}
+                label="fn"
+              />
             )}
             {parsedData.classes.length > 0 && (
-              <MemoStatChip icon={Box} value={`${parsedData.classes.length}`} label="cls" />
+              <MemoStatChip
+                icon={Box}
+                value={`${parsedData.classes.length}`}
+                label="cls"
+              />
             )}
           </div>
         )}
       </div>
 
-      { }
-      <div className="flex shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <div
+        className="flex shrink-0"
+        style={{ borderBottom: "1px solid var(--border-subtle)" }}
+      >
         <MemoTabButton
           active={activeTab === "code"}
           onClick={() => setActiveTab("code")}
@@ -245,7 +266,6 @@ export function CodePanel() {
         />
       </div>
 
-      { }
       <AnimatePresence mode="wait">
         {activeTab === "code" ? (
           <motion.div
@@ -256,7 +276,14 @@ export function CodePanel() {
             transition={{ duration: 0.15 }}
             className="flex-1 flex flex-col min-h-0"
           >
-            <div className="monaco-wrapper" data-theme={theme} style={{ background: theme === "light" ? "#ffffff" : "var(--code-viewer-bg)" }}>
+            <div
+              className="monaco-wrapper"
+              data-theme={theme}
+              style={{
+                background:
+                  theme === "light" ? "#ffffff" : "var(--code-viewer-bg)",
+              }}
+            >
               {fileContent ? (
                 <Editor
                   height="100%"
@@ -284,14 +311,19 @@ export function CodePanel() {
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center">
-                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--text-muted)" }} />
+                  <Loader2
+                    className="w-4 h-4 animate-spin"
+                    style={{ color: "var(--text-muted)" }}
+                  />
                 </div>
               )}
             </div>
 
-            { }
             {fileContent && (
-              <div className="px-3 py-2 flex items-center gap-2 shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <div
+                className="px-3 py-2 flex items-center gap-2 shrink-0"
+                style={{ borderTop: "1px solid var(--border-subtle)" }}
+              >
                 <motion.button
                   onClick={handleAnalyzeSelection}
                   disabled={isAIStreaming}
@@ -347,8 +379,6 @@ export function CodePanel() {
   );
 }
 
-
-
 function StatChip({
   icon: Icon,
   value,
@@ -356,10 +386,13 @@ function StatChip({
 }: {
   icon: typeof Hash;
   value: string;
-  label?: string;
+  label?: string | undefined;
 }) {
   return (
-    <div className="flex items-center gap-1 text-[9px]" style={{ color: "var(--text-tertiary)" }}>
+    <div
+      className="flex items-center gap-1 text-[9px]"
+      style={{ color: "var(--text-tertiary)" }}
+    >
       <Icon className="w-2.5 h-2.5" />
       <span className="tabular-nums">{value}</span>
       {label && <span style={{ color: "var(--text-muted)" }}>{label}</span>}
@@ -380,25 +413,28 @@ function TabButton({
   onClick: () => void;
   icon: typeof Code2;
   label: string;
-  badge?: boolean;
+  badge?: boolean | undefined;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`relative flex items-center gap-1.5 px-4 py-2 text-[10px] font-medium transition-all duration-300`}
+      className="relative flex items-center gap-1.5 px-4 py-2 text-[10px] font-medium transition-all duration-300"
       style={{
         color: active ? "var(--text-primary)" : "var(--text-muted)",
       }}
     >
       <Icon className="w-3 h-3" />
       {label}
-      {badge && <Loader2 className="w-2.5 h-2.5 animate-spin text-accent-cyan" />}
+      {badge === true && (
+        <Loader2 className="w-2.5 h-2.5 animate-spin text-accent-cyan" />
+      )}
       {active && (
         <motion.div
           layoutId="code-tab-indicator"
           className="absolute bottom-0 left-2 right-2 h-[1px]"
           style={{
-            background: "linear-gradient(90deg, transparent, rgba(124, 110, 224, 0.5), transparent)",
+            background:
+              "linear-gradient(90deg, transparent, rgba(124, 110, 224, 0.5), transparent)",
           }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
         />

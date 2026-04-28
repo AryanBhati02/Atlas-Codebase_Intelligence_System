@@ -23,7 +23,8 @@ import {
   CheckCircle2,
   XCircle,
 } from "lucide-react";
-import { useAppStore } from "../../store/appStore";
+import { useUiStore } from "../../store/uiStore";
+import { useSessionStore } from "../../store/sessionStore";
 import { useSettingsStore } from "../../store/settingsStore";
 import {
   getAIStatus,
@@ -88,14 +89,15 @@ function StatusDot({ status }: { status: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const STATUS_COLOR_FALLBACK = { bg: "var(--surface-card-bg)", text: "var(--text-muted)", border: "var(--surface-card-border)" };
   const colorMap: Record<string, { bg: string; text: string; border: string }> = {
     online: { bg: "rgba(16,185,129,0.1)", text: "#34d399", border: "rgba(16,185,129,0.2)" },
     valid: { bg: "rgba(16,185,129,0.1)", text: "#34d399", border: "rgba(16,185,129,0.2)" },
     offline: { bg: "rgba(239,68,68,0.1)", text: "#f87171", border: "rgba(239,68,68,0.2)" },
     invalid: { bg: "rgba(239,68,68,0.1)", text: "#f87171", border: "rgba(239,68,68,0.2)" },
     rate_limited: { bg: "rgba(245,158,11,0.1)", text: "#fbbf24", border: "rgba(245,158,11,0.2)" },
-    no_key: { bg: "var(--surface-card-bg)", text: "var(--text-muted)", border: "var(--surface-card-border)" },
-    unknown: { bg: "var(--surface-card-bg)", text: "var(--text-muted)", border: "var(--surface-card-border)" },
+    no_key: STATUS_COLOR_FALLBACK,
+    unknown: STATUS_COLOR_FALLBACK,
   };
 
   const labels: Record<string, string> = {
@@ -108,7 +110,7 @@ function StatusBadge({ status }: { status: string }) {
     unknown: "Unknown",
   };
 
-  const c = colorMap[status] || colorMap.unknown;
+  const c = colorMap[status] ?? STATUS_COLOR_FALLBACK;
 
   return (
     <span
@@ -388,7 +390,10 @@ function ProviderKeyRow({
 }
 
 export function SettingsPanel() {
-  const { settingsPanelOpen, setSettingsPanelOpen, sessionId } = useAppStore();
+  const settingsPanelOpen = useUiStore((s) => s.settingsPanelOpen);
+  const setSettingsPanelOpen = useUiStore((s) => s.setSettingsPanelOpen);
+  const setAIStatus = useUiStore((s) => s.setAIStatus);
+  const sessionId = useSessionStore((s) => s.sessionId);
   const {
     settings, ollamaModels, isLoadingModels, ollamaReachable,
     draft, isDirty, isApplying, applyError,
@@ -409,7 +414,7 @@ export function SettingsPanel() {
     setIsRefreshing(true);
     try {
       const status = await getAIStatus();
-      useAppStore.getState().setAIStatus(status);
+      setAIStatus(status);
       await loadSettings();
     } catch {
     } finally {
@@ -435,7 +440,7 @@ export function SettingsPanel() {
     const ok = await applyDraft();
     if (ok) {
       const status = await getAIStatus();
-      useAppStore.getState().setAIStatus(status);
+      setAIStatus(status);
     }
   };
 

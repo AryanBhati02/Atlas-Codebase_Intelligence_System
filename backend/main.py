@@ -1,6 +1,5 @@
 """Codebase Intelligence Tool — FastAPI Backend Entry Point."""
 
-import logging
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -8,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import CORS_ORIGINS, SESSIONS_DIR
+from core.logger import get_logger
+from core.errors import AtlasError
 from api.routes.ingest import router as ingest_router
 from api.routes.analyze import router as analyze_router
 from api.routes.files import router as files_router
@@ -19,28 +20,20 @@ from api.routes.git import router as git_router
 from api.routes.collaboration import router as collab_router
 from api.routes.progress import router as progress_router
 
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger("codebase-intel")
-
+logger = get_logger("atlas.main")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 Codebase Intelligence Tool starting up (v2.1.0)")
+    logger.info("Atlas starting up", extra={"version": "2.1.0"})
     from utils.session import cleanup_expired_sessions
     cleaned = cleanup_expired_sessions()
     if cleaned:
-        logger.info(f"🧹 Cleaned up {cleaned} expired sessions")
+        logger.info("Expired sessions cleaned", extra={"count": cleaned})
     yield
-    
     from core.ai.free_api import async_cleanup
     await async_cleanup()
-    logger.info("🛑 Codebase Intelligence Tool shutting down")
+    logger.info("Atlas shutting down")
 
 
 app = FastAPI(
@@ -51,15 +44,35 @@ app = FastAPI(
 )
 
 
+# ---------------------------------------------------------------------------
+# Global exception handlers — NEVER return Python tracebacks to clients
+# ---------------------------------------------------------------------------
+
+@app.exception_handler(AtlasError)
+async def atlas_error_handler(request: Request, exc: AtlasError) -> JSONResponse:
+    logger.error(
+        "Atlas application error",
+        extra={"code": exc.code, "path": str(request.url.path)},
+    )
+    return JSONResponse(status_code=exc.status_code, content=exc.to_dict())
+
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled error on {request.method} {request.url.path}: {exc}", exc_info=True)
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error(
+        "Unhandled exception",
+        extra={"path": str(request.url.path), "exc_type": type(exc).__name__},
+        exc_info=True,
+    )
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": str(exc)[:200]},
+        content={"error": "Internal server error", "code": "INTERNAL_ERROR"},
     )
 
+
+# ---------------------------------------------------------------------------
+# Middleware & routers
+# ---------------------------------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,13 +95,11 @@ app.include_router(progress_router, prefix="/api")
 
 
 @app.get("/api/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     return {"status": "ok", "version": "2.1.0"}
 
 
 if __name__ == "__main__":
-    # sessions/ is created by config.py at import time (above), so it exists
-    # before the watcher starts and the exclusion takes effect immediately.
     uvicorn.run(
         "main:app",
         host="0.0.0.0",

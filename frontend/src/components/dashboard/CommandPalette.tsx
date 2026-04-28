@@ -39,12 +39,13 @@ import {
   type CommandContext,
 } from "../../commands/registry";
 import { searchIndex } from "../../commands/searchIndex";
-import { useAppStore } from "../../store/appStore";
+import { getAppState } from "../../store/appStore";
+import { useSessionStore } from "../../store/sessionStore";
 import { getFileContent, explainFile } from "../../api/api";
 
 
 
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string | undefined }>> = {
   FileCode2,
   Code2,
   RotateCcw,
@@ -80,15 +81,15 @@ export function CommandPalette() {
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const store = useAppStore();
+  const graphData = useSessionStore((s) => s.graphData);
+  const parsedFiles = useSessionStore((s) => s.parsedFiles);
 
-  
   const allCommands = useMemo(() => {
     if (!isOpen) return [];
     const statics = getCommands();
-    const dynamics = buildDynamicCommands(store);
+    const dynamics = buildDynamicCommands(getAppState());
     return [...statics, ...dynamics];
-  }, [isOpen, store.graphData, store.parsedFiles]);
+  }, [isOpen, graphData, parsedFiles]);
 
   useEffect(() => {
     if (isOpen && allCommands.length > 0) {
@@ -157,26 +158,26 @@ export function CommandPalette() {
   const executeCommand = useCallback(
     (cmd: Command) => {
       const ctx: CommandContext = {
-        store: useAppStore.getState(),
+        store: getAppState(),
         selectFile: async (path: string) => {
-          const s = useAppStore.getState();
+          const s = getAppState();
           s.setSelectedFile(path);
           if (s.sessionId) {
             try {
               const content = await getFileContent(s.sessionId, path);
               s.setFileContent(content);
-            } catch {  }
+            } catch { /* no-op */ }
             try {
               s.setAILoading(true);
               const ai = await explainFile(s.sessionId, path);
               s.setAIExplanation(ai.explanation, ai.source);
-            } catch {  }
-            finally { s.setAILoading(false); }
+            } catch { /* no-op */ } finally {
+              s.setAILoading(false);
+            }
           }
         },
         focusNode: (nodeId: string) => {
-          useAppStore.getState().setSelectedFile(nodeId);
-          
+          getAppState().setSelectedFile(nodeId);
           window.dispatchEvent(
             new CustomEvent("cmd:focus-node", { detail: nodeId })
           );
@@ -199,9 +200,8 @@ export function CommandPalette() {
         setActiveIndex((prev) => Math.max(prev - 1, 0));
       } else if (e.key === "Enter") {
         e.preventDefault();
-        if (results[activeIndex]) {
-          executeCommand(results[activeIndex]);
-        }
+        const activeCmd = results[activeIndex];
+        if (activeCmd) executeCommand(activeCmd);
       }
     },
     [results, activeIndex, executeCommand]

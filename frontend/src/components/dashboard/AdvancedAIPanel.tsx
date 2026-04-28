@@ -393,10 +393,11 @@ function SecurityTab() {
     medium: "bg-amber-500/15 text-amber-400 border-amber-500/20",
     low: "bg-slate-500/15 text-slate-400 border-slate-500/20",
   };
+  const PRIORITY_FALLBACK = { bg: "rgba(245,158,11,0.06)", text: "#fbbf24", border: "rgba(245,158,11,0.15)" };
   const priorityColors: Record<string, { bg: string; text: string; border: string }> = {
     critical: { bg: "rgba(239,68,68,0.06)", text: "#f87171", border: "rgba(239,68,68,0.15)" },
     high: { bg: "rgba(249,115,22,0.06)", text: "#fb923c", border: "rgba(249,115,22,0.15)" },
-    medium: { bg: "rgba(245,158,11,0.06)", text: "#fbbf24", border: "rgba(245,158,11,0.15)" },
+    medium: PRIORITY_FALLBACK,
     low: { bg: "rgba(100,116,139,0.06)", text: "#94a3b8", border: "rgba(100,116,139,0.15)" },
   };
 
@@ -464,7 +465,7 @@ function SecurityTab() {
                 </div>
                 <div className="space-y-2">
                   {recommendations.map((rec, i) => {
-                    const pc = priorityColors[rec.priority] || priorityColors.medium;
+                    const pc = priorityColors[rec.priority] ?? PRIORITY_FALLBACK;
                     return (
                       <div key={i} className="rounded-lg overflow-hidden"
                         style={{ background: pc.bg, border: `1px solid ${pc.border}` }}>

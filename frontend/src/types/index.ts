@@ -1,7 +1,99 @@
+/**
+ * Complete type system for the Atlas frontend.
+ * All types are strict — no `any`, no implicit undefined on indexed access.
+ */
 
+import type { Node, Edge } from "reactflow";
 
+// ============================================================
+// AI provider types
+// ============================================================
 
+export type AIProvider =
+  | "ollama"
+  | "groq"
+  | "gemini"
+  | "mistral"
+  | "huggingface";
 
+export interface AIResponse {
+  content: string;
+  provider: AIProvider;
+  tokensUsed: number;
+  durationMs: number;
+}
+
+// ============================================================
+// Session / analysis lifecycle
+// ============================================================
+
+export type SessionStatus =
+  | "queued"
+  | "cloning"
+  | "parsing"
+  | "done"
+  | "error";
+
+export interface AnalysisSession {
+  id: string;
+  repoUrl: string;
+  status: SessionStatus;
+  progress: number;
+  totalFiles: number;
+  parsedFiles: number;
+  createdAt: string;
+}
+
+// ============================================================
+// Symbol & file data
+// ============================================================
+
+export type SymbolKind = "function" | "class" | "constant" | "variable";
+
+export interface CodeSymbol {
+  name: string;
+  type: SymbolKind;
+  lineStart: number;
+  lineEnd: number;
+  isExported: boolean;
+}
+
+export interface FileData {
+  path: string;
+  language: string;
+  content: string;
+  lineCount: number;
+  complexity: number;
+  symbols: CodeSymbol[];
+  imports: string[];
+  dependents: string[];
+}
+
+// ============================================================
+// Graph node / edge (extends ReactFlow)
+// ============================================================
+
+export interface AppNodeData {
+  filePath: string;
+  language: string | null;
+  complexity: number;
+  lineCount: number;
+  symbols: string[];
+  isCluster: boolean;
+  fileCount?: number | undefined;
+}
+
+export type AppNode = Node<AppNodeData>;
+
+export interface AppEdgeData {
+  edgeType: "import" | "export" | "call";
+}
+
+export type AppEdge = Edge<AppEdgeData>;
+
+// ============================================================
+// Ingest
+// ============================================================
 
 export interface FileEntry {
   path: string;
@@ -22,6 +114,9 @@ export interface IngestResponse {
 
 export type IngestTab = "github" | "upload";
 
+// ============================================================
+// Analysis / parse
+// ============================================================
 
 export interface ParsedFile {
   path: string;
@@ -66,6 +161,9 @@ export interface AnalyzeResponse {
   graph: GraphData;
 }
 
+// ============================================================
+// File content
+// ============================================================
 
 export interface FileContentResponse {
   path: string;
@@ -75,6 +173,9 @@ export interface FileContentResponse {
   size_bytes: number;
 }
 
+// ============================================================
+// AI — basic
+// ============================================================
 
 export interface AIExplainResponse {
   file_path: string;
@@ -87,7 +188,6 @@ export interface AIAnalyzeCodeResponse {
   source: string;
 }
 
-
 export interface TopFileEntry {
   path: string;
   complexity_score: number;
@@ -98,7 +198,6 @@ export interface BeginnerGuideResponse {
   top_files: TopFileEntry[];
   source: string;
 }
-
 
 export interface FileReference {
   path: string;
@@ -119,17 +218,23 @@ export interface QAHistoryEntry {
   timestamp: number;
 }
 
+// ============================================================
+// File tree
+// ============================================================
 
 export interface TreeNode {
   name: string;
   path: string;
   isDir: boolean;
   children: TreeNode[];
-  language?: string | null;
-  size_bytes?: number;
-  complexity_score?: number;
+  language?: string | null | undefined;
+  size_bytes?: number | undefined;
+  complexity_score?: number | undefined;
 }
 
+// ============================================================
+// Settings / providers
+// ============================================================
 
 export interface ProviderInfo {
   name: string;
@@ -151,7 +256,6 @@ export interface SettingsResponse {
   cache_size_mb: number;
 }
 
-
 export interface AIStatusResponse {
   ollama: boolean;
   groq: boolean;
@@ -162,13 +266,11 @@ export interface AIStatusResponse {
   cache_size: number;
 }
 
-
 export interface KeyUpdateResponse {
   valid: boolean;
   latency_ms: number;
   error: string | null;
 }
-
 
 export interface TestProviderResponse {
   available: boolean;
@@ -177,12 +279,14 @@ export interface TestProviderResponse {
   error: string | null;
 }
 
-
 export interface ClearCacheResponse {
   cleared_entries: number;
   message: string;
 }
 
+// ============================================================
+// Dead code
+// ============================================================
 
 export interface DeadFileEntry {
   path: string;
@@ -215,6 +319,9 @@ export interface DeadCodeResponse {
   summary: DeadCodeSummary;
 }
 
+// ============================================================
+// Function graph
+// ============================================================
 
 export interface FunctionNode {
   id: string;
@@ -240,12 +347,14 @@ export interface FunctionGraphResponse {
   edges: FunctionEdge[];
 }
 
+// ============================================================
+// Advanced AI
+// ============================================================
 
 export interface ReadmeResponse {
   readme: string;
   source: string;
 }
-
 
 export interface RefactorResponse {
   file_path: string;
@@ -253,12 +362,12 @@ export interface RefactorResponse {
   source: string;
 }
 
-
+/** Strict security finding — matches the backend schema exactly. */
 export interface SecurityFinding {
   file: string;
   line: number;
-  severity: string;
-  category: string;
+  severity: "critical" | "high" | "medium" | "low";
+  category: "secret" | "injection" | "auth" | "crypto" | "config";
   title: string;
   detail: string;
   fix: string;
@@ -288,12 +397,14 @@ export interface SecurityScanResponse {
   recommendations: SecurityRecommendation[];
 }
 
-
 export interface PRReviewResponse {
   review: string;
   source: string;
 }
 
+// ============================================================
+// Git timeline
+// ============================================================
 
 export interface FileChange {
   path: string;
@@ -332,6 +443,9 @@ export interface CoverageResponse {
   avg_coverage: number;
 }
 
+// ============================================================
+// Collaboration
+// ============================================================
 
 export interface Comment {
   id: string;

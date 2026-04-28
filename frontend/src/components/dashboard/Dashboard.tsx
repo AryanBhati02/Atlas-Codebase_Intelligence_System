@@ -14,7 +14,8 @@ import {
   PanelRightClose,
   PanelRight,
 } from "lucide-react";
-import { useAppStore } from "../../store/appStore";
+import { useSessionStore } from "../../store/sessionStore";
+import { useUiStore } from "../../store/uiStore";
 import { useThemeStore } from "../../store/themeStore";
 import { analyzeWithProgress, getAIStatus, getCommentCounts } from "../../api/api";
 import type { AIStatusResponse } from "../../types";
@@ -27,26 +28,25 @@ import { EmptyState } from "./EmptyState";
 import { SidebarEmptyState } from "./SidebarEmptyState";
 
 export function Dashboard() {
-  const {
-    sessionId,
-    repoName,
-    sourceType,
-    isAnalyzed,
-    isAnalyzing,
-    parsedFiles,
-    setAnalyzing,
-    setAnalysisProgress,
-    setAnalysisResult,
-    setError,
-    reset,
-    toggleSettings,
-    aiStatus,
-    setAIStatus,
-    setCommentCounts,
-    isChatPanelOpen,
-    toggleChatPanel,
-    addRecentRepo,
-  } = useAppStore();
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const repoName = useSessionStore((s) => s.repoName);
+  const sourceType = useSessionStore((s) => s.sourceType);
+  const isAnalyzed = useSessionStore((s) => s.isAnalyzed);
+  const isAnalyzing = useSessionStore((s) => s.isAnalyzing);
+  const parsedFiles = useSessionStore((s) => s.parsedFiles);
+  const setAnalyzing = useSessionStore((s) => s.setAnalyzing);
+  const setAnalysisProgress = useSessionStore((s) => s.setAnalysisProgress);
+  const setAnalysisResult = useSessionStore((s) => s.setAnalysisResult);
+  const setError = useSessionStore((s) => s.setError);
+  const reset = useSessionStore((s) => s.reset);
+
+  const toggleSettings = useUiStore((s) => s.toggleSettings);
+  const aiStatus = useUiStore((s) => s.aiStatus);
+  const setAIStatus = useUiStore((s) => s.setAIStatus);
+  const setCommentCounts = useUiStore((s) => s.setCommentCounts);
+  const isChatPanelOpen = useUiStore((s) => s.isChatPanelOpen);
+  const toggleChatPanel = useUiStore((s) => s.toggleChatPanel);
+  const addRecentRepo = useUiStore((s) => s.addRecentRepo);
 
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
@@ -81,12 +81,14 @@ export function Dashboard() {
     try {
       const status = await getAIStatus();
       setAIStatus(status);
-    } catch { }
+    } catch {
+      // silently ignore polling failures
+    }
   }, [setAIStatus]);
 
   useEffect(() => {
-    pollStatus();
-    const interval = setInterval(pollStatus, 30_000);
+    void pollStatus();
+    const interval = setInterval(() => { void pollStatus(); }, 30_000);
     return () => clearInterval(interval);
   }, [pollStatus]);
 
@@ -121,21 +123,25 @@ export function Dashboard() {
         if (!cancelled) {
           setAnalysisResult(data.parsed_files, data.graph);
           if (repoName) {
-            const repoUrl = sourceType === "github"
-              ? `https://github.com/${repoName}`
-              : repoName;
+            const repoUrl =
+              sourceType === "github"
+                ? `https://github.com/${repoName}`
+                : repoName;
             addRecentRepo({
               name: repoName,
               url: repoUrl,
-              sourceType: (sourceType as "github" | "zip") || "github",
+              sourceType: (sourceType as "github" | "zip") ?? "github",
               lastOpened: Date.now(),
             });
           }
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (!cancelled) {
-          setError("Analysis failed. " + (err?.message || ""));
+          setError(
+            "Analysis failed. " +
+              (err instanceof Error ? err.message : String(err))
+          );
           setAnalyzing(false);
         }
       });
@@ -150,11 +156,13 @@ export function Dashboard() {
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const data = await getCommentCounts(sessionId);
         if (!cancelled) setCommentCounts(data.counts);
-      } catch { }
+      } catch {
+        // ignore
+      }
     })();
     return () => { cancelled = true; };
   }, [sessionId, setCommentCounts]);
@@ -179,8 +187,8 @@ export function Dashboard() {
     error: { base: 0, weight: 0 },
   };
 
-  const getOverallPct = () => {
-    const w = stageWeights[progressStage] || { base: 0, weight: 0 };
+  const getOverallPct = (): number => {
+    const w = stageWeights[progressStage] ?? { base: 0, weight: 0 };
     if (progressStage === "done") return 100;
     if (progressStage === "error") return 0;
     const intraStage = progressTotal > 0 ? progressCurrent / progressTotal : 0;
@@ -189,14 +197,21 @@ export function Dashboard() {
 
   const hasSession = !!sessionId && isAnalyzed;
 
-  const complexAvg = useMemo(() =>
-    parsedFiles.length > 0
-      ? (parsedFiles.reduce((s, f) => s + f.complexity_score, 0) / parsedFiles.length).toFixed(2)
-      : "0",
+  const complexAvg = useMemo(
+    () =>
+      parsedFiles.length > 0
+        ? (
+            parsedFiles.reduce((s, f) => s + f.complexity_score, 0) /
+            parsedFiles.length
+          ).toFixed(2)
+        : "0",
     [parsedFiles]
   );
 
-  const totalLoc = useMemo(() => parsedFiles.reduce((s, f) => s + f.loc, 0), [parsedFiles]);
+  const totalLoc = useMemo(
+    () => parsedFiles.reduce((s, f) => s + f.loc, 0),
+    [parsedFiles]
+  );
 
   if (isAnalyzing) {
     const overallPct = getOverallPct();
@@ -249,9 +264,12 @@ export function Dashboard() {
             className="text-xs mb-4"
             style={{ color: "var(--text-tertiary)" }}
           >
-            {stageLabels[progressStage] || progressStage}
+            {stageLabels[progressStage] ?? progressStage}
             {progressStage === "parsing" && progressTotal > 0 && (
-              <span className="ml-1 tabular-nums" style={{ color: "var(--accent-cyan)" }}>
+              <span
+                className="ml-1 tabular-nums"
+                style={{ color: "var(--accent-cyan)" }}
+              >
                 — {progressCurrent}/{progressTotal} files
               </span>
             )}
@@ -276,7 +294,8 @@ export function Dashboard() {
             </div>
           </div>
 
-          {(progressStage === "starting" || (progressTotal === 0 && progressStage !== "done")) && (
+          {(progressStage === "starting" ||
+            (progressTotal === 0 && progressStage !== "done")) && (
             <div className="flex gap-1.5 mt-3">
               {[0, 1, 2].map((i) => (
                 <div
@@ -309,17 +328,29 @@ export function Dashboard() {
             <img src="/icon.png" alt="Logo" className="w-full h-full object-cover" />
           </motion.div>
           <div>
-            <h1 className="text-[11px] font-bold leading-none tracking-tight" style={{ color: "var(--text-primary)" }}>
+            <h1
+              className="text-[11px] font-bold leading-none tracking-tight"
+              style={{ color: "var(--text-primary)" }}
+            >
               Codebase Intelligence
             </h1>
             {hasSession && (
               <div className="flex items-center gap-1.5 mt-0.5">
                 {sourceType === "github" ? (
-                  <GitBranch className="w-2.5 h-2.5" style={{ color: "var(--text-tertiary)" }} />
+                  <GitBranch
+                    className="w-2.5 h-2.5"
+                    style={{ color: "var(--text-tertiary)" }}
+                  />
                 ) : (
-                  <Upload className="w-2.5 h-2.5" style={{ color: "var(--text-tertiary)" }} />
+                  <Upload
+                    className="w-2.5 h-2.5"
+                    style={{ color: "var(--text-tertiary)" }}
+                  />
                 )}
-                <span className="text-[10px] font-medium truncate max-w-[200px]" style={{ color: "var(--text-muted)" }}>
+                <span
+                  className="text-[10px] font-medium truncate max-w-[200px]"
+                  style={{ color: "var(--text-muted)" }}
+                >
                   {repoName}
                 </span>
               </div>
@@ -332,23 +363,59 @@ export function Dashboard() {
 
           {hasSession && (
             <>
-              <div className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}>
-                <FileCode2 className="w-3 h-3" style={{ color: "var(--accent-cyan)", opacity: 0.7 }} />
-                <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+              <div
+                className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+                style={{
+                  background: "var(--bg-input)",
+                  border: "1px solid var(--border-light)",
+                }}
+              >
+                <FileCode2
+                  className="w-3 h-3"
+                  style={{ color: "var(--accent-cyan)", opacity: 0.7 }}
+                />
+                <span
+                  className="text-[10px] font-medium"
+                  style={{ color: "var(--text-tertiary)" }}
+                >
                   {parsedFiles.length}
                 </span>
               </div>
 
-              <div className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}>
-                <Layers className="w-3 h-3" style={{ color: "var(--accent-purple)", opacity: 0.7 }} />
-                <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+              <div
+                className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+                style={{
+                  background: "var(--bg-input)",
+                  border: "1px solid var(--border-light)",
+                }}
+              >
+                <Layers
+                  className="w-3 h-3"
+                  style={{ color: "var(--accent-purple)", opacity: 0.7 }}
+                />
+                <span
+                  className="text-[10px] font-medium"
+                  style={{ color: "var(--text-tertiary)" }}
+                >
                   {totalLoc.toLocaleString()} LOC
                 </span>
               </div>
 
-              <div className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}>
-                <Activity className="w-3 h-3" style={{ color: "var(--accent-gold)", opacity: 0.7 }} />
-                <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+              <div
+                className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+                style={{
+                  background: "var(--bg-input)",
+                  border: "1px solid var(--border-light)",
+                }}
+              >
+                <Activity
+                  className="w-3 h-3"
+                  style={{ color: "var(--accent-gold)", opacity: 0.7 }}
+                />
+                <span
+                  className="text-[10px] font-medium"
+                  style={{ color: "var(--text-tertiary)" }}
+                >
                   {complexAvg}
                 </span>
               </div>
@@ -356,7 +423,15 @@ export function Dashboard() {
           )}
 
           <motion.button
-            onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+            onClick={() =>
+              window.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                  key: "k",
+                  ctrlKey: true,
+                  bubbles: true,
+                })
+              )
+            }
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-colors duration-200"
@@ -369,12 +444,14 @@ export function Dashboard() {
           >
             <Search className="w-3 h-3" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="ml-0.5 px-1 py-0.5 rounded text-[8px] font-semibold"
+            <kbd
+              className="ml-0.5 px-1 py-0.5 rounded text-[8px] font-semibold"
               style={{
                 background: "var(--bg-input)",
                 border: "1px solid var(--border-medium)",
                 color: "var(--text-tertiary)",
-              }}>
+              }}
+            >
               ⌘K
             </kbd>
           </motion.button>
@@ -389,9 +466,10 @@ export function Dashboard() {
               background: "var(--bg-input)",
               border: "1px solid var(--border-light)",
             }}
-            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            title={
+              theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"
+            }
             aria-label="Toggle theme"
-            tabIndex={0}
           >
             {theme === "dark" ? (
               <Sun className="w-3.5 h-3.5" />
@@ -410,9 +488,10 @@ export function Dashboard() {
               background: "var(--bg-input)",
               border: "1px solid var(--border-light)",
             }}
-            title={isChatPanelOpen ? "Hide Chat Panel" : "Show Chat Panel"}
+            title={
+              isChatPanelOpen ? "Hide Chat Panel" : "Show Chat Panel"
+            }
             aria-label="Toggle chat panel"
-            tabIndex={0}
           >
             {isChatPanelOpen ? (
               <PanelRightClose className="w-3.5 h-3.5" />
@@ -455,7 +534,10 @@ export function Dashboard() {
         </div>
       </header>
 
-      <ResizablePanels hasSession={hasSession} isChatPanelOpen={isChatPanelOpen} />
+      <ResizablePanels
+        hasSession={hasSession}
+        isChatPanelOpen={isChatPanelOpen}
+      />
 
       <SettingsPanel />
       <CommandPalette />
@@ -484,16 +566,17 @@ function ResizablePanels({
   const RIGHT_MAX = 600;
 
   const handleMouseDown = useCallback(
-    (side: "left" | "right") => (e: React.MouseEvent) => {
-      e.preventDefault();
-      dragRef.current = {
-        side,
-        startX: e.clientX,
-        startWidth: side === "left" ? leftWidth : rightWidth,
-      };
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    },
+    (side: "left" | "right") =>
+      (e: React.MouseEvent) => {
+        e.preventDefault();
+        dragRef.current = {
+          side,
+          startX: e.clientX,
+          startWidth: side === "left" ? leftWidth : rightWidth,
+        };
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      },
     [leftWidth, rightWidth]
   );
 
@@ -505,7 +588,9 @@ function ResizablePanels({
       if (side === "left") {
         setLeftWidth(Math.min(LEFT_MAX, Math.max(LEFT_MIN, startWidth + delta)));
       } else {
-        setRightWidth(Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, startWidth - delta)));
+        setRightWidth(
+          Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, startWidth - delta))
+        );
       }
     };
 
@@ -537,31 +622,33 @@ function ResizablePanels({
         {hasSession ? <FileExplorer /> : <SidebarEmptyState />}
       </motion.div>
 
-      <div
-        className="resize-handle"
-        onMouseDown={handleMouseDown("left")}
-      />
+      <div className="resize-handle" onMouseDown={handleMouseDown("left")} />
 
       <motion.div
         className="panel panel-center"
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94], delay: 0.1 }}
+        transition={{
+          duration: 0.5,
+          ease: [0.25, 0.46, 0.45, 0.94],
+          delay: 0.1,
+        }}
       >
         {hasSession ? <GraphView /> : <EmptyState />}
       </motion.div>
 
-      <div
-        className="resize-handle"
-        onMouseDown={handleMouseDown("right")}
-      />
+      <div className="resize-handle" onMouseDown={handleMouseDown("right")} />
 
       <motion.div
         className={`panel panel-right${isChatPanelOpen ? "" : " collapsed"}`}
         initial={{ x: 20, opacity: 0 }}
         animate={{ x: 0, opacity: isChatPanelOpen ? 1 : 0 }}
         transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-        style={isChatPanelOpen ? { width: rightWidth, minWidth: RIGHT_MIN, maxWidth: RIGHT_MAX } : undefined}
+        style={
+          isChatPanelOpen
+            ? { width: rightWidth, minWidth: RIGHT_MIN, maxWidth: RIGHT_MAX }
+            : {}
+        }
       >
         {hasSession && <CodePanel />}
       </motion.div>
@@ -569,18 +656,36 @@ function ResizablePanels({
   );
 }
 
-
-const AIStatusIndicator = React.memo(function AIStatusIndicator({ status }: { status: AIStatusResponse | null }) {
+const AIStatusIndicator = React.memo(function AIStatusIndicator({
+  status,
+}: {
+  status: AIStatusResponse | null;
+}) {
   if (!status) {
     return (
-      <div className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}>
-        <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--text-faint)" }} />
-        <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>AI</span>
+      <div
+        className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+        style={{
+          background: "var(--bg-input)",
+          border: "1px solid var(--border-light)",
+        }}
+      >
+        <div
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ background: "var(--text-faint)" }}
+        />
+        <span
+          className="text-[10px] font-medium"
+          style={{ color: "var(--text-tertiary)" }}
+        >
+          AI
+        </span>
       </div>
     );
   }
 
-  const anyAPI = status.groq || status.gemini || status.mistral || status.huggingface;
+  const anyAPI =
+    status.groq || status.gemini || status.mistral || status.huggingface;
   const isLocal = status.ollama;
 
   if (isLocal && anyAPI) {
@@ -590,7 +695,9 @@ const AIStatusIndicator = React.memo(function AIStatusIndicator({ status }: { st
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping opacity-30" />
         </div>
-        <span className="text-[10px] text-emerald-400/80 font-medium">AI Ready</span>
+        <span className="text-[10px] text-emerald-400/80 font-medium">
+          AI Ready
+        </span>
       </div>
     );
   }
@@ -612,5 +719,4 @@ const AIStatusIndicator = React.memo(function AIStatusIndicator({ status }: { st
       <span className="text-[10px] text-red-400/60 font-medium">Offline</span>
     </div>
   );
-}
-);
+});

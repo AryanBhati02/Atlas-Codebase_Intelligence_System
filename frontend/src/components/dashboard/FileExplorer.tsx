@@ -1,8 +1,3 @@
-
-
-
-
-
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -13,7 +8,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useAppStore } from "../../store/appStore";
+import { useSessionStore } from "../../store/sessionStore";
 import { getFileContent } from "../../api/api";
 import type { TreeNode, ParsedFile } from "../../types";
 
@@ -25,8 +20,8 @@ function buildTree(files: ParsedFile[]): TreeNode[] {
     const parts = f.path.split("/");
     let current = root;
 
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
+    // Using forEach so each `part` is guaranteed string (not string | undefined)
+    parts.forEach((part, i) => {
       const isFile = i === parts.length - 1;
       const existing = current.find((n) => n.name === part);
 
@@ -45,7 +40,7 @@ function buildTree(files: ParsedFile[]): TreeNode[] {
         current.push(node);
         current = node.children;
       }
-    }
+    });
   }
 
   const sortTree = (nodes: TreeNode[]): TreeNode[] => {
@@ -75,17 +70,16 @@ function getFileIcon(lang: string | null): string {
     HTML: "#f43f5e",
     CSS: "#8b5cf6",
   };
-  return lang ? colors[lang] || "#64748b" : "#64748b";
+  return lang !== null ? (colors[lang] ?? "#64748b") : "#64748b";
 }
 
 export function FileExplorer() {
-  const {
-    parsedFiles,
-    selectedFile,
-    sessionId,
-    setSelectedFile,
-    setFileContent,
-  } = useAppStore();
+  const parsedFiles = useSessionStore((s) => s.parsedFiles);
+  const selectedFile = useSessionStore((s) => s.selectedFile);
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const setSelectedFile = useSessionStore((s) => s.setSelectedFile);
+  const setFileContent = useSessionStore((s) => s.setFileContent);
+
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -129,11 +123,12 @@ export function FileExplorer() {
     try {
       const content = await getFileContent(sessionId, path);
       setFileContent(content);
-    } catch { /* no-op */ }
-    // ExplainTab auto-streams the explanation when selectedFile changes
+    } catch {
+      // no-op — ExplainTab will show an error if needed
+    }
   };
 
-  const renderNode = (node: TreeNode, depth: number) => {
+  const renderNode = (node: TreeNode, depth: number): React.ReactNode => {
     const isOpen = expanded.has(node.path);
     const isActive = selectedFile === node.path;
 
@@ -150,15 +145,24 @@ export function FileExplorer() {
               animate={{ rotate: isOpen ? 90 : 0 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
             >
-              <ChevronRight className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
+              <ChevronRight
+                className="w-3 h-3 shrink-0"
+                style={{ color: "var(--text-muted)" }}
+              />
             </motion.div>
             {isOpen ? (
               <FolderOpen className="w-3.5 h-3.5 text-accent-gold/70 shrink-0" />
             ) : (
-              <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+              <Folder
+                className="w-3.5 h-3.5 shrink-0"
+                style={{ color: "var(--text-muted)" }}
+              />
             )}
             <span className="truncate text-[11.5px]">{node.name}</span>
-            <span className="text-[9px] ml-auto tabular-nums" style={{ color: "var(--text-muted)" }}>
+            <span
+              className="text-[9px] ml-auto tabular-nums"
+              style={{ color: "var(--text-muted)" }}
+            >
               {node.children.length}
             </span>
           </motion.div>
@@ -185,25 +189,28 @@ export function FileExplorer() {
         key={node.path}
         className={`tree-item ${isActive ? "active" : ""}`}
         style={{ paddingLeft: 10 + depth * 16 }}
-        onClick={() => handleFileClick(node.path)}
+        onClick={() => void handleFileClick(node.path)}
         whileTap={{ scale: 0.98 }}
         whileHover={{ x: 2 }}
         transition={{ duration: 0.15 }}
       >
         <FileCode2
           className="w-3 h-3 shrink-0"
-          style={{ color: isActive ? "#f6c445" : getFileIcon(node.language ?? null) }}
+          style={{
+            color: isActive ? "#f6c445" : getFileIcon(node.language ?? null),
+          }}
         />
         <span className="truncate flex-1 text-[11.5px]">{node.name}</span>
-        {node.complexity_score !== undefined && node.complexity_score > 0 && (
-          <div
-            className="complexity-dot"
-            style={{
-              backgroundColor: getComplexityColor(node.complexity_score),
-            }}
-            title={`Complexity: ${(node.complexity_score * 100).toFixed(0)}%`}
-          />
-        )}
+        {node.complexity_score !== undefined &&
+          node.complexity_score > 0 && (
+            <div
+              className="complexity-dot"
+              style={{
+                backgroundColor: getComplexityColor(node.complexity_score),
+              }}
+              title={`Complexity: ${(node.complexity_score * 100).toFixed(0)}%`}
+            />
+          )}
       </motion.div>
     );
   };
@@ -212,22 +219,29 @@ export function FileExplorer() {
     <>
       <div className="panel-header">
         <h2>Explorer</h2>
-        <span className="text-[9px] font-medium tabular-nums" style={{ color: "var(--text-muted)" }}>
+        <span
+          className="text-[9px] font-medium tabular-nums"
+          style={{ color: "var(--text-muted)" }}
+        >
           {parsedFiles.length} files
         </span>
       </div>
 
-      { }
-      <div className="px-2.5 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <div
+        className="px-2.5 py-2"
+        style={{ borderBottom: "1px solid var(--border-subtle)" }}
+      >
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3" style={{ color: "var(--text-muted)" }} />
+          <Search
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3"
+            style={{ color: "var(--text-muted)" }}
+          />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search files…"
-            className="w-full pl-7 pr-7 py-1.5 rounded-lg
-              text-[11px] transition-all duration-300"
+            className="w-full pl-7 pr-7 py-1.5 rounded-lg text-[11px] transition-all duration-300"
             style={{
               background: "var(--bg-input)",
               border: "1px solid var(--border-subtle)",
@@ -246,7 +260,6 @@ export function FileExplorer() {
         </div>
       </div>
 
-      { }
       <div className="panel-body py-1">
         {filteredTree.map((node) => renderNode(node, 0))}
       </div>

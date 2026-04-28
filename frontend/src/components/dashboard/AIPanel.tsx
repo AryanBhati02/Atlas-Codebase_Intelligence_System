@@ -17,7 +17,8 @@ import {
   X,
   Square,
 } from "lucide-react";
-import { useAppStore } from "../../store/appStore";
+import { useSessionStore } from "../../store/sessionStore";
+import { useAiStore } from "../../store/aiStore";
 import { getFileContent } from "../../api/api";
 import { streamAI } from "../../api/aiStream";
 import type { StreamControl } from "../../api/aiStream";
@@ -29,7 +30,13 @@ type AITab = "explain" | "analyze" | "beginner" | "qa" | "advanced";
 // Shared UI primitives
 // ---------------------------------------------------------------------------
 
-function SourceBadge({ source, isStreaming }: { source: string | null; isStreaming?: boolean }) {
+function SourceBadge({
+  source,
+  isStreaming,
+}: {
+  source: string | null;
+  isStreaming?: boolean;
+}) {
   if (isStreaming) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/15 animate-pulse">
@@ -56,7 +63,6 @@ function SourceBadge({ source, isStreaming }: { source: string | null; isStreami
   );
 }
 
-/** Blinking block cursor rendered after streaming text. */
 function StreamCursor() {
   return (
     <motion.span
@@ -94,7 +100,9 @@ function EmptyPrompt({
 }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-12">
-      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-3 bg-${color}/10 border border-${color}/12`}>
+      <div
+        className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-3 bg-${color}/10 border border-${color}/12`}
+      >
         <Icon className={`w-5 h-5 text-${color}`} />
       </div>
       <p className="text-xs text-slate-400 mb-1">{primary}</p>
@@ -104,11 +112,13 @@ function EmptyPrompt({
 }
 
 // ---------------------------------------------------------------------------
-// ExplainTab — auto-streams when a file is selected
+// ExplainTab — auto-streams when a file is selected, cancels on file change
 // ---------------------------------------------------------------------------
 
 function ExplainTab() {
-  const { selectedFile, sessionId } = useAppStore();
+  const selectedFile = useSessionStore((s) => s.selectedFile);
+  const sessionId = useSessionStore((s) => s.sessionId);
+
   const [content, setContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const streamedFileRef = useRef<string | null>(null);
@@ -120,7 +130,6 @@ function ExplainTab() {
       setIsStreaming(false);
       return;
     }
-    // Don't re-stream the same file (handles tab switches)
     if (streamedFileRef.current === selectedFile) return;
     streamedFileRef.current = selectedFile;
 
@@ -133,13 +142,21 @@ function ExplainTab() {
       { session_id: sessionId, file_path: selectedFile },
       {
         onChunk: (text) => setContent((c) => c + text),
-        onDone: () => { setIsStreaming(false); ctrlRef.current = null; },
-        onError: () => { setIsStreaming(false); ctrlRef.current = null; },
+        onDone: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+        },
+        onError: () => {
+          setIsStreaming(false);
+          ctrlRef.current = null;
+        },
       }
     );
     ctrlRef.current = ctrl;
 
-    return () => { ctrl.cancel(); };
+    return () => {
+      ctrl.cancel();
+    };
   }, [selectedFile, sessionId]);
 
   const handleCancel = () => {
@@ -161,7 +178,9 @@ function ExplainTab() {
     <div className="flex-1 flex flex-col min-h-0">
       <div className="px-4 pt-3 pb-1 flex items-center gap-2 shrink-0">
         <SourceBadge source={content ? "ai" : null} isStreaming={isStreaming} />
-        <span className="text-[10px] text-slate-600 truncate font-mono">{selectedFile}</span>
+        <span className="text-[10px] text-slate-600 truncate font-mono">
+          {selectedFile}
+        </span>
         {isStreaming && <CancelButton onClick={handleCancel} />}
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 ai-content">
@@ -176,7 +195,9 @@ function ExplainTab() {
             <span>Analysing…</span>
           </div>
         ) : (
-          <p className="text-[10px] text-slate-600">Waiting for file selection…</p>
+          <p className="text-[10px] text-slate-600">
+            Waiting for file selection…
+          </p>
         )}
       </div>
     </div>
@@ -184,11 +205,12 @@ function ExplainTab() {
 }
 
 // ---------------------------------------------------------------------------
-// AnalyzeTab — reads from store (CodePanel streams into it)
+// AnalyzeTab — reads from AI store (CodePanel streams into it)
 // ---------------------------------------------------------------------------
 
 function AnalyzeTab() {
-  const { aiAnalysis, isAIStreaming } = useAppStore();
+  const aiAnalysis = useAiStore((s) => s.aiAnalysis);
+  const isAIStreaming = useAiStore((s) => s.isAIStreaming);
 
   if (!aiAnalysis && !isAIStreaming) {
     return (
@@ -217,26 +239,24 @@ function AnalyzeTab() {
 }
 
 // ---------------------------------------------------------------------------
-// BeginnerTab — streams on mount
+// BeginnerTab — streams on mount, persists to AI store to avoid re-streaming
 // ---------------------------------------------------------------------------
 
 function BeginnerTab() {
-  const {
-    sessionId,
-    beginnerGuide,
-    beginnerTopFiles,
-    setBeginnerGuide,
-    setSelectedFile,
-    setFileContent,
-  } = useAppStore();
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const setSelectedFile = useSessionStore((s) => s.setSelectedFile);
+  const setFileContent = useSessionStore((s) => s.setFileContent);
 
-  const [content, setContent] = useState(beginnerGuide || "");
+  const beginnerGuide = useAiStore((s) => s.beginnerGuide);
+  const beginnerTopFiles = useAiStore((s) => s.beginnerTopFiles);
+  const setBeginnerGuide = useAiStore((s) => s.setBeginnerGuide);
+
+  const [content, setContent] = useState(beginnerGuide ?? "");
   const [isStreaming, setIsStreaming] = useState(false);
   const didStreamRef = useRef(false);
   const ctrlRef = useRef<StreamControl | null>(null);
 
   useEffect(() => {
-    // Restore cached guide
     if (beginnerGuide) setContent(beginnerGuide);
   }, [beginnerGuide]);
 
@@ -257,7 +277,6 @@ function BeginnerTab() {
         onDone: () => {
           setIsStreaming(false);
           ctrlRef.current = null;
-          // Persist in store so re-mounting the tab doesn't re-stream
           if (accumulated) {
             setBeginnerGuide(accumulated, [], "ai");
           }
@@ -270,7 +289,9 @@ function BeginnerTab() {
       }
     );
     ctrlRef.current = ctrl;
-    return () => { ctrl.cancel(); };
+    return () => {
+      ctrl.cancel();
+    };
   }, [sessionId, beginnerGuide, setBeginnerGuide]);
 
   const handleCancel = () => {
@@ -284,7 +305,9 @@ function BeginnerTab() {
     try {
       const fc = await getFileContent(sessionId, path);
       setFileContent(fc);
-    } catch { /* no-op */ }
+    } catch {
+      // no-op
+    }
   };
 
   return (
@@ -309,13 +332,13 @@ function BeginnerTab() {
             {beginnerTopFiles.map((f) => (
               <button
                 key={f.path}
-                onClick={() => handleFileClick(f.path)}
+                onClick={() => void handleFileClick(f.path)}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px]
                   bg-dark-800/60 border border-white/5 text-slate-300
                   hover:border-accent-gold/30 hover:text-accent-gold transition-all"
               >
                 <FileCode2 className="w-3 h-3" />
-                {f.path.split("/").pop()}
+                {f.path.split("/").pop() ?? f.path}
                 <ChevronRight className="w-2.5 h-2.5 text-slate-600" />
               </button>
             ))}
@@ -348,7 +371,7 @@ function BeginnerTab() {
 }
 
 // ---------------------------------------------------------------------------
-// QATab — streams each answer as it arrives
+// QATab — streams each answer, cancels on component unmount
 // ---------------------------------------------------------------------------
 
 interface StreamingEntry {
@@ -359,13 +382,12 @@ interface StreamingEntry {
 }
 
 function QATab() {
-  const {
-    sessionId,
-    qaHistory,
-    addQAEntry,
-    setSelectedFile,
-    setFileContent,
-  } = useAppStore();
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const setSelectedFile = useSessionStore((s) => s.setSelectedFile);
+  const setFileContent = useSessionStore((s) => s.setFileContent);
+
+  const qaHistory = useAiStore((s) => s.qaHistory);
+  const addQAEntry = useAiStore((s) => s.addQAEntry);
 
   const [question, setQuestion] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -385,7 +407,12 @@ function QATab() {
     setQuestion("");
     setIsStreaming(true);
 
-    const entry: StreamingEntry = { question: q, answer: "", refs: [], timestamp: Date.now() };
+    const entry: StreamingEntry = {
+      question: q,
+      answer: "",
+      refs: [],
+      timestamp: Date.now(),
+    };
     setInProgress(entry);
 
     const ctrl = streamAI(
@@ -393,10 +420,12 @@ function QATab() {
       { session_id: sessionId, question: q },
       {
         onChunk: (text) => {
-          setInProgress((prev) => prev ? { ...prev, answer: prev.answer + text } : null);
+          setInProgress((prev) =>
+            prev ? { ...prev, answer: prev.answer + text } : null
+          );
         },
         onRefs: (refs) => {
-          setInProgress((prev) => prev ? { ...prev, refs } : null);
+          setInProgress((prev) => (prev ? { ...prev, refs } : null));
         },
         onDone: () => {
           setIsStreaming(false);
@@ -413,7 +442,8 @@ function QATab() {
           ctrlRef.current = null;
           setInProgress((prev) => {
             if (prev) {
-              const answer = prev.answer || "Failed to get answer. Please try again.";
+              const answer =
+                prev.answer || "Failed to get answer. Please try again.";
               addQAEntry(prev.question, answer, prev.refs, "error");
             }
             return null;
@@ -441,7 +471,9 @@ function QATab() {
     try {
       const fc = await getFileContent(sessionId, path);
       setFileContent(fc);
-    } catch { /* no-op */ }
+    } catch {
+      // no-op
+    }
   };
 
   return (
@@ -452,7 +484,9 @@ function QATab() {
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3 bg-accent-cyan/10 border border-accent-cyan/12">
               <MessageCircleQuestion className="w-5 h-5 text-accent-cyan" />
             </div>
-            <p className="text-xs text-slate-400 mb-2">Ask anything about the codebase</p>
+            <p className="text-xs text-slate-400 mb-2">
+              Ask anything about the codebase
+            </p>
             <div className="space-y-1">
               {[
                 "How does the authentication work?",
@@ -465,14 +499,13 @@ function QATab() {
                   className="block w-full text-left text-[11px] text-slate-500 px-3 py-1.5
                     rounded-md hover:bg-dark-800/60 hover:text-slate-300 transition-colors"
                 >
-                  "{hint}"
+                  &ldquo;{hint}&rdquo;
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {/* Completed history */}
         {qaHistory.map((entry, i) => (
           <div key={i} className="space-y-3">
             <div className="flex justify-end">
@@ -489,7 +522,9 @@ function QATab() {
                 </span>
               </div>
               <div className="ai-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.answer}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {entry.answer}
+                </ReactMarkdown>
               </div>
               {entry.referenced_files.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-white/[0.04]">
@@ -500,14 +535,14 @@ function QATab() {
                     {entry.referenced_files.map((ref) => (
                       <button
                         key={ref.path}
-                        onClick={() => handleRefClick(ref.path)}
+                        onClick={() => void handleRefClick(ref.path)}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]
                           bg-dark-800/60 border border-white/5 text-slate-400
                           hover:border-accent-cyan/30 hover:text-accent-cyan transition-all"
                         title={ref.relevance_reason}
                       >
                         <FileCode2 className="w-3 h-3" />
-                        {ref.path.split("/").pop()}
+                        {ref.path.split("/").pop() ?? ref.path}
                       </button>
                     ))}
                   </div>
@@ -517,7 +552,6 @@ function QATab() {
           </div>
         ))}
 
-        {/* In-progress streaming entry */}
         {inProgress && (
           <div className="space-y-3">
             <div className="flex justify-end">
@@ -539,7 +573,9 @@ function QATab() {
               <div className="ai-content">
                 {inProgress.answer ? (
                   <>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{inProgress.answer}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {inProgress.answer}
+                    </ReactMarkdown>
                     <StreamCursor />
                   </>
                 ) : (
@@ -558,13 +594,13 @@ function QATab() {
                     {inProgress.refs.map((ref) => (
                       <button
                         key={ref.path}
-                        onClick={() => handleRefClick(ref.path)}
+                        onClick={() => void handleRefClick(ref.path)}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]
                           bg-dark-800/60 border border-white/5 text-slate-400
                           hover:border-accent-cyan/30 hover:text-accent-cyan transition-all"
                       >
                         <FileCode2 className="w-3 h-3" />
-                        {ref.path.split("/").pop()}
+                        {ref.path.split("/").pop() ?? ref.path}
                       </button>
                     ))}
                   </div>
@@ -575,7 +611,6 @@ function QATab() {
         )}
       </div>
 
-      {/* Input row */}
       <div className="px-3 py-3 border-t border-white/[0.04] shrink-0">
         <div className="flex items-center gap-2">
           <input
@@ -619,19 +654,23 @@ const TABS: { id: AITab; label: string; icon: typeof Brain }[] = [
 
 export function AIPanel() {
   const [activeTab, setActiveTab] = useState<AITab>("explain");
-  const { aiAnalysis, qaHistory, isAIStreaming } = useAppStore();
+  const aiAnalysis = useAiStore((s) => s.aiAnalysis);
+  const isAIStreaming = useAiStore((s) => s.isAIStreaming);
+  const qaHistory = useAiStore((s) => s.qaHistory);
 
   useEffect(() => {
     const onShowAITab = (e: Event) => {
-      const tab = (e as CustomEvent).detail as AITab;
+      const tab = (e as CustomEvent<AITab>).detail;
       if (tab) setActiveTab(tab);
     };
     const onShowAdvanced = (e: Event) => {
       setActiveTab("advanced");
-      const detail = (e as CustomEvent).detail;
+      const detail = (e as CustomEvent).detail as unknown;
       if (detail) {
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("cmd:advanced-sub-tab", { detail }));
+          window.dispatchEvent(
+            new CustomEvent("cmd:advanced-sub-tab", { detail })
+          );
         }, 50);
       }
     };
@@ -645,7 +684,6 @@ export function AIPanel() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Tab bar */}
       <div className="flex border-b border-white/[0.04] shrink-0 px-1">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -653,17 +691,17 @@ export function AIPanel() {
           const hasNotif =
             (tab.id === "analyze" && !!aiAnalysis) ||
             (tab.id === "qa" && qaHistory.length > 0);
-          const isTabStreaming =
-            (tab.id === "analyze" && isAIStreaming);
+          const isTabStreaming = tab.id === "analyze" && isAIStreaming;
 
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1 px-3 py-2 text-[10px] font-medium transition-colors relative
-                ${isActive
-                  ? "text-accent-cyan border-b border-accent-cyan"
-                  : "text-slate-500 hover:text-slate-300"
+                ${
+                  isActive
+                    ? "text-accent-cyan border-b border-accent-cyan"
+                    : "text-slate-500 hover:text-slate-300"
                 }`}
             >
               <Icon className="w-3 h-3" />
@@ -679,7 +717,6 @@ export function AIPanel() {
         })}
       </div>
 
-      {/* Tab content */}
       {activeTab === "explain" && <ExplainTab />}
       {activeTab === "analyze" && <AnalyzeTab />}
       {activeTab === "beginner" && <BeginnerTab />}

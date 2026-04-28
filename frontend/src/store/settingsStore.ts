@@ -1,134 +1,140 @@
 import { create } from "zustand";
 import {
-    getSettings,
-    getOllamaModels,
-    selectModel as apiSelectModel,
-    setPreferLocal as apiSetPreferLocal,
+  getSettings,
+  getOllamaModels,
+  selectModel as apiSelectModel,
+  setPreferLocal as apiSetPreferLocal,
 } from "../api/api";
 import type { SettingsResponse } from "../types";
 
 export interface OllamaModelInfo {
-    name: string;
-    size: string;
-    modified_at: string;
+  name: string;
+  size: string;
+  modified_at: string;
 }
 
 interface DraftState {
-    selectedModel: string;
-    preferLocal: boolean;
+  selectedModel: string;
+  preferLocal: boolean;
 }
 
 interface SettingsStoreState {
-    settings: SettingsResponse | null;
-    ollamaModels: OllamaModelInfo[];
-    isLoadingModels: boolean;
-    ollamaReachable: boolean;
+  settings: SettingsResponse | null;
+  ollamaModels: OllamaModelInfo[];
+  isLoadingModels: boolean;
+  ollamaReachable: boolean;
 
-    draft: DraftState;
-    committed: DraftState;
-    isDirty: boolean;
+  draft: DraftState;
+  committed: DraftState;
+  isDirty: boolean;
 
-    isApplying: boolean;
-    applyError: string | null;
+  isApplying: boolean;
+  applyError: string | null;
 
-    loadSettings: () => Promise<void>;
-    loadOllamaModels: () => Promise<void>;
-    initDraft: (settings: SettingsResponse) => void;
-    updateDraft: (partial: Partial<DraftState>) => void;
-    applyDraft: () => Promise<boolean>;
-    cancelDraft: () => void;
+  loadSettings: () => Promise<void>;
+  loadOllamaModels: () => Promise<void>;
+  initDraft: (settings: SettingsResponse) => void;
+  updateDraft: (partial: Partial<DraftState>) => void;
+  applyDraft: () => Promise<boolean>;
+  cancelDraft: () => void;
+  /** Called by the Axios 401 interceptor to invalidate cached settings. */
+  clearApiKeys: () => void;
 }
 
 const DEFAULT_DRAFT: DraftState = {
-    selectedModel: "phi3:mini",
-    preferLocal: true,
+  selectedModel: "phi3:mini",
+  preferLocal: true,
 };
 
 export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
-    settings: null,
-    ollamaModels: [],
-    isLoadingModels: false,
-    ollamaReachable: false,
+  settings: null,
+  ollamaModels: [],
+  isLoadingModels: false,
+  ollamaReachable: false,
 
-    draft: { ...DEFAULT_DRAFT },
-    committed: { ...DEFAULT_DRAFT },
-    isDirty: false,
+  draft: { ...DEFAULT_DRAFT },
+  committed: { ...DEFAULT_DRAFT },
+  isDirty: false,
 
-    isApplying: false,
-    applyError: null,
+  isApplying: false,
+  applyError: null,
 
-    loadSettings: async () => {
-        try {
-            const data = await getSettings();
-            set({ settings: data });
-            get().initDraft(data);
-        } catch { }
-    },
+  loadSettings: async () => {
+    try {
+      const data = await getSettings();
+      set({ settings: data });
+      get().initDraft(data);
+    } catch {
+      // silently ignore on initial load
+    }
+  },
 
-    loadOllamaModels: async () => {
-        set({ isLoadingModels: true });
-        try {
-            const data = await getOllamaModels();
-            set({
-                ollamaModels: data.models,
-                ollamaReachable: data.reachable,
-                isLoadingModels: false,
-            });
-        } catch {
-            set({ ollamaModels: [], ollamaReachable: false, isLoadingModels: false });
-        }
-    },
+  loadOllamaModels: async () => {
+    set({ isLoadingModels: true });
+    try {
+      const data = await getOllamaModels();
+      set({
+        ollamaModels: data.models,
+        ollamaReachable: data.reachable,
+        isLoadingModels: false,
+      });
+    } catch {
+      set({ ollamaModels: [], ollamaReachable: false, isLoadingModels: false });
+    }
+  },
 
-    initDraft: (settings: SettingsResponse) => {
-        const ollamaProvider = settings.providers.find((p) => p.name === "ollama");
-        const model = ollamaProvider?.model || "phi3:mini";
-        const committed: DraftState = {
-            selectedModel: model,
-            preferLocal: settings.prefer_local,
-        };
-        set({ draft: { ...committed }, committed: { ...committed }, isDirty: false });
-    },
+  initDraft: (settings: SettingsResponse) => {
+    const ollamaProvider = settings.providers.find((p) => p.name === "ollama");
+    const model = ollamaProvider?.model ?? "phi3:mini";
+    const committed: DraftState = {
+      selectedModel: model,
+      preferLocal: settings.prefer_local,
+    };
+    set({ draft: { ...committed }, committed: { ...committed }, isDirty: false });
+  },
 
-    updateDraft: (partial: Partial<DraftState>) => {
-        const newDraft = { ...get().draft, ...partial };
-        const committed = get().committed;
-        const isDirty =
-            newDraft.selectedModel !== committed.selectedModel ||
-            newDraft.preferLocal !== committed.preferLocal;
-        set({ draft: newDraft, isDirty });
-    },
+  updateDraft: (partial: Partial<DraftState>) => {
+    const newDraft = { ...get().draft, ...partial };
+    const committed = get().committed;
+    const isDirty =
+      newDraft.selectedModel !== committed.selectedModel ||
+      newDraft.preferLocal !== committed.preferLocal;
+    set({ draft: newDraft, isDirty });
+  },
 
-    applyDraft: async () => {
-        const { draft, committed } = get();
-        set({ isApplying: true, applyError: null });
+  applyDraft: async () => {
+    const { draft, committed } = get();
+    set({ isApplying: true, applyError: null });
 
-        try {
-            if (draft.selectedModel !== committed.selectedModel) {
-                await apiSelectModel(draft.selectedModel);
-            }
-            if (draft.preferLocal !== committed.preferLocal) {
-                await apiSetPreferLocal(draft.preferLocal);
-            }
+    try {
+      if (draft.selectedModel !== committed.selectedModel) {
+        await apiSelectModel(draft.selectedModel);
+      }
+      if (draft.preferLocal !== committed.preferLocal) {
+        await apiSetPreferLocal(draft.preferLocal);
+      }
 
-            set({
-                committed: { ...draft },
-                isDirty: false,
-                isApplying: false,
-            });
+      set({ committed: { ...draft }, isDirty: false, isApplying: false });
+      await get().loadSettings();
+      return true;
+    } catch (e: unknown) {
+      set({
+        isApplying: false,
+        applyError:
+          e instanceof Error ? e.message : "Failed to apply settings",
+      });
+      return false;
+    }
+  },
 
-            await get().loadSettings();
-            return true;
-        } catch (e: any) {
-            set({
-                isApplying: false,
-                applyError: e?.message || "Failed to apply settings",
-            });
-            return false;
-        }
-    },
+  cancelDraft: () => {
+    const committed = get().committed;
+    set({ draft: { ...committed }, isDirty: false, applyError: null });
+  },
 
-    cancelDraft: () => {
-        const committed = get().committed;
-        set({ draft: { ...committed }, isDirty: false, applyError: null });
-    },
+  clearApiKeys: () => {
+    // The backend owns the actual keys; we just invalidate our cached settings
+    // so the settings panel re-fetches on next open.
+    set({ settings: null });
+  },
 }));

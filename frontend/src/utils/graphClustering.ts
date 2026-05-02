@@ -1,4 +1,7 @@
 import type { Node, Edge, Viewport } from "reactflow";
+import { createProfiler } from "../lib/perfProfiler";
+
+export const visibleNodesProfiler = createProfiler("getVisibleNodes");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -280,23 +283,27 @@ export function getVisibleNodes(
   viewport: Viewport,
   zoom: number
 ): AnyNode[] {
-  if (nodes.length <= 150) return nodes;
+  const result = visibleNodesProfiler.measure(() => {
+    if (nodes.length <= 150) return nodes;
 
-  if (zoom < 0.25) {
-    return nodes.filter((n) => n.type === "clusterNode");
-  }
+    if (zoom < 0.25) {
+      return nodes.filter((n) => n.type === "clusterNode");
+    }
 
-  const padding = zoom < 0.6 ? 600 : 200;
-  const sw = window.innerWidth;
-  const sh = window.innerHeight;
+    const padding = zoom < 0.6 ? 600 : 200;
+    const sw = window.innerWidth;
+    const sh = window.innerHeight;
 
-  // Convert screen bounds → graph-space bounds
-  const minX = (-padding - viewport.x) / zoom;
-  const maxX = (sw + padding - viewport.x) / zoom;
-  const minY = (-padding - viewport.y) / zoom;
-  const maxY = (sh + padding - viewport.y) / zoom;
+    // Convert screen bounds → graph-space bounds
+    const minX = (-padding - viewport.x) / zoom;
+    const maxX = (sw + padding - viewport.x) / zoom;
+    const minY = (-padding - viewport.y) / zoom;
+    const maxY = (sh + padding - viewport.y) / zoom;
 
-  return nodes.filter(({ position: { x, y } }) =>
-    x >= minX && x <= maxX && y >= minY && y <= maxY
-  );
+    return nodes.filter(({ position: { x, y } }) =>
+      x >= minX && x <= maxX && y >= minY && y <= maxY
+    );
+  });
+  visibleNodesProfiler.setLastResultCount(result.length);
+  return result;
 }

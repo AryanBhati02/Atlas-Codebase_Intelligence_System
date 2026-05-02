@@ -42,7 +42,10 @@ import {
   type ClusterNode,
   type ClusteredGraph,
 } from "../../utils/graphClustering";
+import { createProfiler } from "../../lib/perfProfiler";
 import type { CoverageResponse } from "../../types";
+
+export const enrichNodeProfiler = createProfiler("enrichNode");
 
 const Graph3DView = lazy(() =>
   import("./Graph3DView").then((m) => ({ default: m.Graph3DView }))
@@ -340,29 +343,31 @@ interface VisualState {
 }
 
 function enrichNode(node: Node, v: VisualState): Node {
-  const hasSearch = v.searchMatchIds.size > 0;
-  return {
-    ...node,
-    data: {
-      ...node.data,
-      selected: node.id === v.selectedFile,
-      isDead: v.deadFilePaths.has(node.id),
-      isDimmed: hasSearch
-        ? !v.searchMatchIds.has(node.id)
-        : v.connectedIds
-          ? !v.connectedIds.has(node.id)
-          : false,
-      heatmapOn: v.heatmapOn,
-      isHighlighted: hasSearch
-        ? v.searchMatchIds.has(node.id)
-        : v.highlightedFiles.has(node.id),
-      coveragePct:
-        v.showCoverage && v.coverageData?.coverage?.[node.id] != null
-          ? v.coverageData.coverage[node.id]
-          : null,
-      commentCount: v.commentCounts[node.id] || 0,
-    },
-  };
+  return enrichNodeProfiler.measure(() => {
+    const hasSearch = v.searchMatchIds.size > 0;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        selected: node.id === v.selectedFile,
+        isDead: v.deadFilePaths.has(node.id),
+        isDimmed: hasSearch
+          ? !v.searchMatchIds.has(node.id)
+          : v.connectedIds
+            ? !v.connectedIds.has(node.id)
+            : false,
+        heatmapOn: v.heatmapOn,
+        isHighlighted: hasSearch
+          ? v.searchMatchIds.has(node.id)
+          : v.highlightedFiles.has(node.id),
+        coveragePct:
+          v.showCoverage && v.coverageData?.coverage?.[node.id] != null
+            ? v.coverageData.coverage[node.id]
+            : null,
+        commentCount: v.commentCounts[node.id] || 0,
+      },
+    };
+  });
 }
 
 function styledEdge(edge: Edge, v: VisualState): Edge {

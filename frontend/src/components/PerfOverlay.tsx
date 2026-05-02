@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import type { CSSProperties } from "react";
 import { useSessionStore } from "../store/sessionStore";
 import { usePerfStore } from "../stores/perfStore";
+import { enrichNodeProfiler } from "./dashboard/GraphView";
+import { visibleNodesProfiler } from "../utils/graphClustering";
 
 // performance.memory is a non-standard V8 extension not in lib.dom.d.ts
 interface MemoryInfo {
@@ -29,6 +31,11 @@ interface Metrics {
   nodeCount: number;
   edgeCount: number;
   drawCalls: number | null; // null = 3D canvas not active
+  enrichNodeCallsPerSec: number;
+  enrichNodeAvgMs: number;
+  getVisibleNodesCallsPerSec: number;
+  getVisibleNodesAvgMs: number;
+  getVisibleNodesLastResultCount: number;
 }
 
 const INITIAL_METRICS: Metrics = {
@@ -40,6 +47,11 @@ const INITIAL_METRICS: Metrics = {
   nodeCount: 0,
   edgeCount: 0,
   drawCalls: null,
+  enrichNodeCallsPerSec: 0,
+  enrichNodeAvgMs: 0,
+  getVisibleNodesCallsPerSec: 0,
+  getVisibleNodesAvgMs: 0,
+  getVisibleNodesLastResultCount: 0,
 };
 
 const DISPLAY_INTERVAL_MS = 100; // throttle visible state to ~10 updates/sec
@@ -56,6 +68,12 @@ function heapColor(usedMB: number, limitMB: number): string {
   const ratio = usedMB / limitMB;
   if (ratio < 0.6) return "#4ade80";
   if (ratio < 0.85) return "#fbbf24";
+  return "#f87171";
+}
+
+function avgMsColor(ms: number): string {
+  if (ms < 0.5) return "#4ade80";
+  if (ms < 2.0) return "#fbbf24";
   return "#f87171";
 }
 
@@ -168,7 +186,23 @@ export function PerfOverlay() {
         const is3DActive = performance.now() - perfState.lastUpdatedAt < STALENESS_MS;
         const drawCalls = is3DActive ? perfState.drawCalls : null;
 
-        setMetrics({ fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls });
+        // Pull profiler stats and flush to store for external consumers
+        const enrichStats = enrichNodeProfiler.getStats();
+        const visibleStats = visibleNodesProfiler.getStats();
+        perfState.setEnrichNodeCallsPerSec(enrichStats.callsPerSec);
+        perfState.setEnrichNodeAvgMs(enrichStats.avgMs);
+        perfState.setGetVisibleNodesCallsPerSec(visibleStats.callsPerSec);
+        perfState.setGetVisibleNodesAvgMs(visibleStats.avgMs);
+        perfState.setGetVisibleNodesLastResultCount(visibleStats.lastCallCount);
+
+        setMetrics({
+          fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls,
+          enrichNodeCallsPerSec: enrichStats.callsPerSec,
+          enrichNodeAvgMs: enrichStats.avgMs,
+          getVisibleNodesCallsPerSec: visibleStats.callsPerSec,
+          getVisibleNodesAvgMs: visibleStats.avgMs,
+          getVisibleNodesLastResultCount: visibleStats.lastCallCount,
+        });
       }
 
       rafId = requestAnimationFrame(tick);
@@ -181,7 +215,11 @@ export function PerfOverlay() {
   // Zero DOM output (and zero rAF work above) when hidden
   if (!visible) return null;
 
-  const { fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls } = metrics;
+  const {
+    fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls,
+    enrichNodeCallsPerSec, enrichNodeAvgMs,
+    getVisibleNodesCallsPerSec, getVisibleNodesLastResultCount,
+  } = metrics;
 
   const fpsClr = fpsColor(rollingFps);
   const heapClr =
@@ -226,6 +264,26 @@ export function PerfOverlay() {
         <span style={labelStyle}>3D draw calls</span>
         <span style={drawCalls != null ? undefined : dimStyle}>
           {drawCalls ?? "—"}
+        </span>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>enrichNode/s</span>
+        <span>{enrichNodeCallsPerSec}</span>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>enrichNode avg</span>
+        <span style={{ color: avgMsColor(enrichNodeAvgMs) }}>
+          {enrichNodeAvgMs.toFixed(2)} ms
+        </span>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>visibleNodes/s</span>
+        <span>
+          {getVisibleNodesCallsPerSec}{" "}
+          <span style={dimStyle}>({getVisibleNodesLastResultCount})</span>
         </span>
       </div>
     </div>

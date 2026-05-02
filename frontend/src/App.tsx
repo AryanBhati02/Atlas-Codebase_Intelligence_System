@@ -4,6 +4,7 @@ import { Dashboard } from "./components/dashboard/Dashboard";
 import { IngestModal } from "./components/ingest/IngestModal";
 import { SplashScreen } from "./components/SplashScreen";
 import { AnimatePresence } from "framer-motion";
+import { PerfOverlay } from "./components/PerfOverlay";
 
 function App() {
   const sessionId = useSessionStore((s) => s.sessionId);
@@ -21,6 +22,7 @@ function App() {
           </div>
         )}
       </AnimatePresence>
+      {(import.meta.env.DEV || import.meta.env.VITE_ENABLE_PERF === "true") && <PerfOverlay />}
     </>
   );
 }

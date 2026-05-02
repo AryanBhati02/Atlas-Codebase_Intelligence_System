@@ -1,6 +1,7 @@
 import { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
+import { PerfBridge } from "../PerfOverlayBridge";
 import * as THREE from "three";
 import { useAppStore } from "../../store/appStore";
 import { useThemeStore, type ThemeColors } from "../../store/themeStore";
@@ -445,6 +446,7 @@ export function Graph3DView() {
         <color attach="background" args={[themeColors.threeBg]} />
         <fog attach="fog" args={[themeColors.threeFog, 500, 2500]} />
         <Graph3DScene />
+        <PerfBridge />
       </Canvas>
 
       <div

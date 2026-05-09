@@ -1,8 +1,3 @@
-"""
-Session management for isolated repository workspaces.
-Each ingestion creates a unique session with its own directory.
-Includes session validation, expiry cleanup, and safe path handling.
-"""
 
 import re
 import uuid
@@ -15,17 +10,12 @@ from config import SESSIONS_DIR, SESSION_LIFETIME_HOURS
 
 logger = logging.getLogger("codebase-intel.session")
 
-
 _SESSION_ID_PATTERN = re.compile(r'^[a-f0-9]{12}$')
 
-
 def validate_session_id(session_id: str) -> bool:
-    """Validate session ID format to prevent path injection."""
     return bool(_SESSION_ID_PATTERN.match(session_id))
 
-
 def create_session() -> tuple[str, Path]:
-    """Create a new session with a unique ID and directory structure."""
     session_id = uuid.uuid4().hex[:12]
     session_dir = SESSIONS_DIR / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -35,9 +25,7 @@ def create_session() -> tuple[str, Path]:
     logger.info(f"Created session {session_id}")
     return session_id, session_dir
 
-
 def get_session_dir(session_id: str) -> Path:
-    """Retrieve the directory for an existing session with validation."""
     if not validate_session_id(session_id):
         raise FileNotFoundError(f"Invalid session ID: {session_id}")
     session_dir = SESSIONS_DIR / session_id
@@ -45,17 +33,13 @@ def get_session_dir(session_id: str) -> Path:
         raise FileNotFoundError(f"Session {session_id} not found")
     return session_dir
 
-
 def cleanup_session(session_id: str) -> None:
-    """Remove all data for a session."""
     session_dir = SESSIONS_DIR / session_id
     if session_dir.exists():
         shutil.rmtree(session_dir, ignore_errors=True)
         logger.info(f"Cleaned up session {session_id}")
 
-
 def cleanup_expired_sessions() -> int:
-    """Remove sessions older than SESSION_LIFETIME_HOURS. Returns count of cleaned sessions."""
     if not SESSIONS_DIR.exists():
         return 0
 

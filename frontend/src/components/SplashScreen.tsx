@@ -8,7 +8,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             onAnimationComplete={(definition) => {
                 if (definition === "exit" || (definition as any)?.opacity === 0) {
-                    // Fallback if needed, but AnimatePresence handles unmount
+                    
                 }
             }}
             className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-base"

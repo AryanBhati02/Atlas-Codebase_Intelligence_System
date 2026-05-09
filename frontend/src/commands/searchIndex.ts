@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import type { Command } from "./registry";
 
 interface IndexEntry {
@@ -16,30 +11,22 @@ interface IndexEntry {
 export class SearchIndex {
   private entries: IndexEntry[] = [];
 
-  
-
-
-
   build(commands: Command[]): void {
     this.entries = commands.map((cmd) => {
       const tokens = new Set<string>();
 
-      
       for (const word of cmd.label.toLowerCase().split(/[\s\-_:/.]+/)) {
         if (word.length > 0) tokens.add(word);
       }
 
-      
       for (const word of cmd.description.toLowerCase().split(/[\s\-_:/.]+/)) {
         if (word.length > 1) tokens.add(word);
       }
 
-      
       for (const kw of cmd.keywords) {
         tokens.add(kw.toLowerCase());
       }
 
-      
       tokens.add(cmd.category);
 
       return {
@@ -50,9 +37,6 @@ export class SearchIndex {
       };
     });
   }
-
-  
-
 
   search(query: string, limit: number = 20): Command[] {
     if (!query.trim()) {
@@ -71,7 +55,6 @@ export class SearchIndex {
     for (const entry of this.entries) {
       let score = 0;
 
-      
       if (entry.labelLower === q) {
         score += 100;
       }
@@ -84,7 +67,6 @@ export class SearchIndex {
         score += 40;
       }
 
-      
       for (const qt of qTokens) {
         for (const token of entry.tokens) {
           if (token === qt) {
@@ -97,17 +79,14 @@ export class SearchIndex {
         }
       }
 
-      
       if (entry.descLower.includes(q)) {
         score += 8;
       }
 
-      
       if (!entry.command.id.startsWith("file:") && !entry.command.id.startsWith("fn:")) {
         score += 2;
       }
 
-      
       if (score === 0) {
         const fuzzyScore = fuzzyMatch(q, entry.labelLower);
         if (fuzzyScore > 0) {
@@ -120,7 +99,6 @@ export class SearchIndex {
       }
     }
 
-    
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.entry.labelLower.localeCompare(b.entry.labelLower);
@@ -133,10 +111,6 @@ export class SearchIndex {
     return this.entries.length;
   }
 }
-
-
-
-
 
 function fuzzyMatch(query: string, target: string): number {
   let qi = 0;
@@ -153,10 +127,7 @@ function fuzzyMatch(query: string, target: string): number {
     }
   }
 
-  
   return qi === query.length ? Math.max(score * 0.5, 1) : 0;
 }
-
-
 
 export const searchIndex = new SearchIndex();

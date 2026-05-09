@@ -1,4 +1,3 @@
-"""Dead Code + Function Graph API routes."""
 
 import json
 from fastapi import APIRouter, HTTPException, Query
@@ -20,24 +19,18 @@ from models.schemas import (
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
 
-
-
-
 @router.get("/dead-code/{session_id}", response_model=DeadCodeResponse)
 async def get_dead_code(session_id: str):
-    """Analyze dead code for a session. Results are cached in dead_code.json."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    
     cache_path = session_dir / "dead_code.json"
     if cache_path.exists():
         data = json.loads(cache_path.read_text(encoding="utf-8"))
         return _build_dead_code_response(data)
 
-    
     parsed_path = session_dir / "parsed.json"
     if not parsed_path.exists():
         raise HTTPException(status_code=404, detail="Run analyze first.")
@@ -45,14 +38,11 @@ async def get_dead_code(session_id: str):
     parsed = json.loads(parsed_path.read_text(encoding="utf-8"))
     repo_dir = session_dir / "repo"
 
-    
     result = analyze_dead_code(parsed, repo_dir)
 
-    
     cache_path.write_text(json.dumps(result), encoding="utf-8")
 
     return _build_dead_code_response(result)
-
 
 def _build_dead_code_response(data: dict) -> DeadCodeResponse:
     return DeadCodeResponse(
@@ -62,21 +52,16 @@ def _build_dead_code_response(data: dict) -> DeadCodeResponse:
         summary=DeadCodeSummary(**data["summary"]),
     )
 
-
-
-
 @router.get("/function-graph/{session_id}", response_model=FunctionGraphResponse)
 async def get_function_graph(
     session_id: str,
     file: str = Query(..., description="Relative file path within the repo"),
 ):
-    """Build function-level call graph for a specific file."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    
     cache_dir = session_dir / "function_graphs"
     cache_dir.mkdir(exist_ok=True)
     safe_name = file.replace("/", "__").replace("\\", "__")
@@ -86,7 +71,6 @@ async def get_function_graph(
         data = json.loads(cache_path.read_text(encoding="utf-8"))
         return _build_fn_graph_response(file, data)
 
-    
     parsed_path = session_dir / "parsed.json"
     if not parsed_path.exists():
         raise HTTPException(status_code=404, detail="Run analyze first.")
@@ -98,14 +82,11 @@ async def get_function_graph(
 
     repo_dir = session_dir / "repo"
 
-    
     result = build_function_graph(file, repo_dir, parsed_file)
 
-    
     cache_path.write_text(json.dumps(result), encoding="utf-8")
 
     return _build_fn_graph_response(file, result)
-
 
 def _build_fn_graph_response(file_path: str, data: dict) -> FunctionGraphResponse:
     return FunctionGraphResponse(

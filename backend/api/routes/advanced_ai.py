@@ -1,4 +1,3 @@
-"""Advanced AI endpoints — README generator, refactor suggestions, security scanner."""
 
 import json
 from fastapi import APIRouter, HTTPException
@@ -16,9 +15,6 @@ from utils.session_cache import load_parsed, load_graph, load_dead_code
 
 router = APIRouter(prefix="/ai/advanced", tags=["Advanced AI"])
 
-
-
-
 @router.post("/readme", response_model=ReadmeResponse)
 async def ai_readme(request: ReadmeRequest):
     try:
@@ -30,7 +26,6 @@ async def ai_readme(request: ReadmeRequest):
     if not all_parsed:
         raise HTTPException(status_code=404, detail="Run analyze first.")
 
-    
     cache_key = "advanced:readme"
     content_hash = hash_content(str(len(all_parsed)))
     cached = get_cached(session_dir, cache_key, content_hash)
@@ -48,9 +43,6 @@ async def ai_readme(request: ReadmeRequest):
     response = ReadmeResponse(readme=result["readme"], source=result["source"])
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
-
-
-
 
 @router.post("/refactor", response_model=RefactorResponse)
 async def ai_refactor(request: RefactorRequest):
@@ -70,7 +62,6 @@ async def ai_refactor(request: RefactorRequest):
     if cached:
         return RefactorResponse(**cached)
 
-    
     all_parsed = load_parsed(session_dir)
     parsed = {}
     for p in all_parsed:
@@ -78,7 +69,6 @@ async def ai_refactor(request: RefactorRequest):
             parsed = p
             break
 
-    
     dead_code = load_dead_code(session_dir)
     dead_exports = dead_code.get("dead_exports", [])
 
@@ -90,9 +80,6 @@ async def ai_refactor(request: RefactorRequest):
     )
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
-
-
-
 
 @router.post("/security", response_model=SecurityScanResponse)
 async def ai_security(request: SecurityScanRequest):
@@ -122,9 +109,6 @@ async def ai_security(request: SecurityScanRequest):
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
 
-
-
-
 @router.post("/pr-review", response_model=PRReviewResponse)
 async def ai_pr_review(request: PRReviewRequest):
     try:
@@ -136,7 +120,6 @@ async def ai_pr_review(request: PRReviewRequest):
     if not all_parsed:
         raise HTTPException(status_code=404, detail="Run analyze first.")
 
-    
     file_key = "|".join(sorted(request.file_paths)) if request.file_paths else "all"
     cache_key = f"advanced:pr-review:{hash_content(file_key)}"
     content_hash = hash_content(str(len(all_parsed)) + file_key)

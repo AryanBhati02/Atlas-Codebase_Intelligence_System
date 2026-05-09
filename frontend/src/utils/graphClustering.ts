@@ -3,10 +3,6 @@ import { createProfiler } from "../lib/perfProfiler";
 
 export const visibleNodesProfiler = createProfiler("getVisibleNodes");
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export interface AppNodeData {
   label: string;
   language: string | null;
@@ -34,31 +30,27 @@ export interface ClusterNodeData {
 
 export type ClusterNode = Node<ClusterNodeData, "clusterNode">;
 
-/** Union of a plain file node and a directory cluster node. */
 export type AnyNode = AppNode | ClusterNode;
 
 export interface ClusteredGraph {
-  /** Currently visible nodes: cluster headers (collapsed or open) + expanded children. */
-  nodes: AnyNode[];
-  /** Currently visible edges (inter-cluster or internal-when-expanded). */
-  edges: Edge[];
-  /** Lookup from original file-node id → that AppNode. */
-  nodeMap: Map<string, AppNode>;
-  /** Maps every file-node id → the cluster id it belongs to. */
-  clusterOf: Map<string, string>;
-  /** Set of cluster ids whose children are currently shown in the graph. */
-  expandedClusters: Set<string>;
-  /** All original file-level edges — never mutated. */
-  originalEdges: Edge[];
+    nodes: AnyNode[];
+    edges: Edge[];
+    nodeMap: Map<string, AppNode>;
+    clusterOf: Map<string, string>;
+    expandedClusters: Set<string>;
+    originalEdges: Edge[];
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 function getDirName(nodeId: string): string {
   const slash = nodeId.indexOf("/");
   return slash !== -1 ? nodeId.slice(0, slash) : "(root)";
+}
+
+function getDirAtDepth(nodeId: string, depth: number): string {
+  const parts = nodeId.split("/");
+  if (parts.length === 1) return "(root)";
+  if (depth >= parts.length) return nodeId;
+  return parts.slice(0, depth).join("/");
 }
 
 function getMostCommonLanguage(nodes: AppNode[]): string | null {
@@ -80,14 +72,6 @@ function getAvgComplexity(nodes: AppNode[]): number {
   return nodes.reduce((acc, n) => acc + (n.data.complexity ?? 0), 0) / nodes.length;
 }
 
-/**
- * Recomputes which edges are visible given the current expand state.
- * - Internal edges (same cluster) are shown only when that cluster is expanded.
- * - Cross-cluster edges map each endpoint to the cluster node when collapsed,
- *   or to the actual file node when expanded — then deduplicated.
- * - Edges whose endpoints are not in visibleNodeIds are dropped (handles
- *   partial display, e.g. showing only top-50 clusters).
- */
 function computeVisibleEdges(
   originalEdges: Edge[],
   clusterOf: Map<string, string>,
@@ -102,7 +86,7 @@ function computeVisibleEdges(
     if (!srcCluster || !tgtCluster) continue;
 
     if (srcCluster === tgtCluster) {
-      // Internal: only show when cluster is expanded and both children visible
+      
       if (
         expandedClusters.has(srcCluster) &&
         visibleNodeIds.has(edge.source) &&
@@ -113,7 +97,6 @@ function computeVisibleEdges(
       continue;
     }
 
-    // Cross-cluster: map each end to visible representative
     const srcExpanded = expandedClusters.has(srcCluster);
     const tgtExpanded = expandedClusters.has(tgtCluster);
     const visibleSrc = srcExpanded && visibleNodeIds.has(edge.source) ? edge.source : srcCluster;
@@ -134,14 +117,6 @@ function computeVisibleEdges(
   return Array.from(edgeMap.values());
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Groups all file nodes by their first path segment and creates one ClusterNode
- * per directory. Returns a ClusteredGraph where all clusters are collapsed.
- */
 export function clusterByDirectory(nodes: AppNode[], edges: Edge[]): ClusteredGraph {
   const dirMap = new Map<string, AppNode[]>();
   for (const node of nodes) {
@@ -193,11 +168,72 @@ export function clusterByDirectory(nodes: AppNode[], edges: Edge[]): ClusteredGr
   };
 }
 
-/**
- * Expands a cluster: the cluster node stays (marked expanded=true) and its
- * children are inserted into the graph in a grid below the cluster node.
- * A new layout run is expected after this call.
- */
+export function subClusterChildren(
+  parentClusterId: string,
+  children: AppNode[],
+  parentPosition: { x: number; y: number },
+  depth: number
+): { subClusters: ClusterNode[]; directFiles: AppNode[] } {
+  
+  const parentLabel = parentClusterId.replace(/^cluster-/, "");
+
+  const groups = new Map<string, AppNode[]>();
+  for (const child of children) {
+    const dirPrefix = getDirAtDepth(child.id, depth);
+    if (!groups.has(dirPrefix)) groups.set(dirPrefix, []);
+    groups.get(dirPrefix)!.push(child);
+  }
+
+  const subClusterGroups: Array<{ dirPrefix: string; group: AppNode[] }> = [];
+  const directFileNodes: AppNode[] = [];
+
+  for (const [dirPrefix, group] of groups) {
+    if (group.length > 1 && dirPrefix !== parentLabel) {
+      subClusterGroups.push({ dirPrefix, group });
+    } else {
+      directFileNodes.push(...group);
+    }
+  }
+
+  const subCols = Math.min(5, Math.max(1, Math.ceil(Math.sqrt(subClusterGroups.length))));
+  const subRows = Math.ceil(subClusterGroups.length / subCols);
+
+  const getSubClusterPosition = (index: number): { x: number; y: number } => ({
+    x: parentPosition.x + (index % subCols) * 360 - ((subCols - 1) * 180),
+    y: parentPosition.y + 180 + Math.floor(index / subCols) * 160,
+  });
+
+  const fileYStart = parentPosition.y + 180 + subRows * 160 + 60;
+  const fileCols = Math.max(1, Math.ceil(Math.sqrt(directFileNodes.length)));
+
+  const getDirectFilePosition = (index: number): { x: number; y: number } => ({
+    x: parentPosition.x + (index % fileCols) * 220 - ((fileCols - 1) * 110),
+    y: fileYStart + Math.floor(index / fileCols) * 80,
+  });
+
+  const subClusters: ClusterNode[] = subClusterGroups.map(({ dirPrefix, group }, i) => ({
+    id: `cluster-${dirPrefix}`,
+    type: "clusterNode" as const,
+    position: getSubClusterPosition(i),
+    data: {
+      label: dirPrefix,
+      dirName: dirPrefix,
+      fileCount: group.length,
+      children: group,
+      expanded: false,
+      language: getMostCommonLanguage(group),
+      avgComplexity: getAvgComplexity(group),
+    },
+  }));
+
+  const directFiles: AppNode[] = directFileNodes.map((child, i) => ({
+    ...child,
+    position: getDirectFilePosition(i),
+  }));
+
+  return { subClusters, directFiles };
+}
+
 export function expandCluster(clusterId: string, graph: ClusteredGraph): ClusteredGraph {
   const clusterNode = graph.nodes.find((n) => n.id === clusterId) as ClusterNode | undefined;
   if (!clusterNode || clusterNode.type !== "clusterNode") return graph;
@@ -205,17 +241,7 @@ export function expandCluster(clusterId: string, graph: ClusteredGraph): Cluster
   const children = clusterNode.data.children;
   const cx = clusterNode.position.x;
   const cy = clusterNode.position.y;
-  const cols = Math.max(1, Math.ceil(Math.sqrt(children.length)));
 
-  const positionedChildren: AppNode[] = children.map((child, i) => ({
-    ...child,
-    position: {
-      x: cx + (i % cols) * 220 - ((cols - 1) * 110),
-      y: cy + 130 + Math.floor(i / cols) * 80,
-    },
-  }));
-
-  // Mark cluster node as expanded (stays in graph as a group header)
   const updatedCluster: ClusterNode = {
     ...clusterNode,
     data: { ...clusterNode.data, expanded: true },
@@ -224,30 +250,81 @@ export function expandCluster(clusterId: string, graph: ClusteredGraph): Cluster
   const newExpandedClusters = new Set(graph.expandedClusters);
   newExpandedClusters.add(clusterId);
 
-  const otherNodes = graph.nodes.filter((n) => n.id !== clusterId);
-  const newNodes: AnyNode[] = [...otherNodes, updatedCluster, ...positionedChildren];
+  let newNodes: AnyNode[];
+  let newClusterOf = graph.clusterOf;
+
+  if (children.length <= 100) {
+    
+    const cols = Math.max(1, Math.ceil(Math.sqrt(children.length)));
+    const positionedChildren: AppNode[] = children.map((child, i) => ({
+      ...child,
+      position: {
+        x: cx + (i % cols) * 220 - ((cols - 1) * 110),
+        y: cy + 130 + Math.floor(i / cols) * 80,
+      },
+    }));
+    const otherNodes = graph.nodes.filter((n) => n.id !== clusterId);
+    newNodes = [...otherNodes, updatedCluster, ...positionedChildren];
+  } else {
+    
+    const slashCount = (clusterNode.data.dirName.match(/\//g) ?? []).length;
+    const depth = slashCount + 2;
+
+    const { subClusters, directFiles } = subClusterChildren(
+      clusterId,
+      children,
+      { x: cx, y: cy },
+      depth
+    );
+
+    const updatedClusterOf = new Map(graph.clusterOf);
+    for (const sub of subClusters) {
+      for (const child of sub.data.children) {
+        updatedClusterOf.set(child.id, sub.id);
+      }
+    }
+    newClusterOf = updatedClusterOf;
+
+    const otherNodes = graph.nodes.filter((n) => n.id !== clusterId);
+    newNodes = [...otherNodes, updatedCluster, ...subClusters, ...directFiles];
+  }
+
   const visibleNodeIds = new Set(newNodes.map((n) => n.id));
 
   return {
     ...graph,
     nodes: newNodes,
-    edges: computeVisibleEdges(graph.originalEdges, graph.clusterOf, newExpandedClusters, visibleNodeIds),
+    edges: computeVisibleEdges(graph.originalEdges, newClusterOf, newExpandedClusters, visibleNodeIds),
     expandedClusters: newExpandedClusters,
+    clusterOf: newClusterOf,
   };
 }
 
-/**
- * Collapses an expanded cluster: removes its children from the graph and
- * resets the cluster node to collapsed state.
- */
 export function collapseCluster(clusterId: string, graph: ClusteredGraph): ClusteredGraph {
-  const childrenIds = new Set<string>();
-  for (const [nodeId, cId] of graph.clusterOf) {
-    if (cId === clusterId) childrenIds.add(nodeId);
-  }
-
   const clusterNode = graph.nodes.find((n) => n.id === clusterId) as ClusterNode | undefined;
   if (!clusterNode) return graph;
+
+  const directChildIds = new Set<string>();
+  for (const [nodeId, cId] of graph.clusterOf) {
+    if (cId === clusterId) directChildIds.add(nodeId);
+  }
+
+  const subClusterPrefix = `${clusterId}/`; 
+  const subClusterIds = new Set<string>();
+  for (const node of graph.nodes) {
+    if (node.type === "clusterNode" && node.id.startsWith(subClusterPrefix)) {
+      subClusterIds.add(node.id);
+    }
+  }
+
+  const newClusterOf = new Map(graph.clusterOf);
+  const subClusterChildIds = new Set<string>();
+  for (const [nodeId, cId] of graph.clusterOf) {
+    if (subClusterIds.has(cId)) {
+      subClusterChildIds.add(nodeId);
+      newClusterOf.set(nodeId, clusterId);
+    }
+  }
 
   const updatedCluster: ClusterNode = {
     ...clusterNode,
@@ -256,28 +333,25 @@ export function collapseCluster(clusterId: string, graph: ClusteredGraph): Clust
 
   const newExpandedClusters = new Set(graph.expandedClusters);
   newExpandedClusters.delete(clusterId);
+  
+  for (const subId of subClusterIds) {
+    newExpandedClusters.delete(subId);
+  }
 
-  const otherNodes = graph.nodes.filter((n) => !childrenIds.has(n.id) && n.id !== clusterId);
+  const allRemovedIds = new Set([...directChildIds, ...subClusterIds, ...subClusterChildIds]);
+  const otherNodes = graph.nodes.filter((n) => !allRemovedIds.has(n.id) && n.id !== clusterId);
   const newNodes: AnyNode[] = [...otherNodes, updatedCluster];
   const visibleNodeIds = new Set(newNodes.map((n) => n.id));
 
   return {
     ...graph,
     nodes: newNodes,
-    edges: computeVisibleEdges(graph.originalEdges, graph.clusterOf, newExpandedClusters, visibleNodeIds),
+    edges: computeVisibleEdges(graph.originalEdges, newClusterOf, newExpandedClusters, visibleNodeIds),
     expandedClusters: newExpandedClusters,
+    clusterOf: newClusterOf,
   };
 }
 
-/**
- * Returns the subset of nodes that should be rendered in the DOM given
- * the current viewport and zoom level. Always returns ≤ 150 nodes.
- *
- * - Total ≤ 150: return all.
- * - Zoom < 0.25: cluster nodes only.
- * - Zoom < 0.6: nodes within viewport + 600 px padding.
- * - Zoom ≥ 0.6: nodes within viewport + 200 px padding.
- */
 export function getVisibleNodes(
   nodes: AnyNode[],
   viewport: Viewport,
@@ -294,15 +368,31 @@ export function getVisibleNodes(
     const sw = window.innerWidth;
     const sh = window.innerHeight;
 
-    // Convert screen bounds → graph-space bounds
     const minX = (-padding - viewport.x) / zoom;
     const maxX = (sw + padding - viewport.x) / zoom;
     const minY = (-padding - viewport.y) / zoom;
     const maxY = (sh + padding - viewport.y) / zoom;
 
-    return nodes.filter(({ position: { x, y } }) =>
+    const filtered = nodes.filter(({ position: { x, y } }) =>
       x >= minX && x <= maxX && y >= minY && y <= maxY
     );
+
+    if (filtered.length <= 150) return filtered;
+
+    const centerX = (sw / 2 - viewport.x) / zoom;
+    const centerY = (sh / 2 - viewport.y) / zoom;
+
+    const clusterNodes = filtered.filter((n) => n.type === "clusterNode");
+    const fileNodes = filtered.filter((n) => n.type !== "clusterNode");
+
+    const sortedFileNodes = fileNodes.slice().sort((a, b) => {
+      const da = Math.hypot(a.position.x - centerX, a.position.y - centerY);
+      const db = Math.hypot(b.position.x - centerX, b.position.y - centerY);
+      return da - db;
+    });
+
+    const fileSlots = Math.max(0, 150 - clusterNodes.length);
+    return [...clusterNodes, ...sortedFileNodes.slice(0, fileSlots)];
   });
   visibleNodesProfiler.setLastResultCount(result.length);
   return result;

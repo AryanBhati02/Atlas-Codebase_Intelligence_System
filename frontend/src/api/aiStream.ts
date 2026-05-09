@@ -1,28 +1,15 @@
-/**
- * Streaming AI utility — reads SSE responses token by token.
- *
- * Protocol:
- *   data: {"text": "token"}\n\n   — text chunk
- *   data: {"refs": [...]}\n\n     — reference metadata (Q&A)
- *   data: {"error": "..."}\n\n    — server-side error
- *   data: [DONE]\n\n              — stream complete
- *
- * Uses fetch() + ReadableStream (not EventSource) so it supports POST and
- * custom headers. Supports AbortController for cancellation and retries
- * up to MAX_RETRIES times on network failure.
- */
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
 const MAX_RETRIES = 3;
 
 export interface StreamCallbacks {
-  /** Called for each text token received. Accumulate with prev => prev + text. */
+  
   onChunk: (text: string) => void;
-  /** Called when reference metadata arrives (Q&A endpoint). */
+  
   onRefs?: (refs: Array<{ path: string; relevance_reason: string }>) => void;
-  /** Called when the stream finishes cleanly. */
+  
   onDone: () => void;
-  /** Called on unrecoverable error after all retries. */
+  
   onError: (error: Error) => void;
 }
 
@@ -30,14 +17,6 @@ export interface StreamControl {
   cancel: () => void;
 }
 
-/**
- * Start a streaming AI request.
- *
- * @param endpoint  Path relative to API_BASE, e.g. "/ai/explain/stream"
- * @param params    Query params (GET) or JSON body (POST)
- * @param callbacks Token/done/error handlers
- * @param method    "GET" (default) — params go in URL; "POST" — params go in body
- */
 export function streamAI(
   endpoint: string,
   params: Record<string, string>,
@@ -85,14 +64,13 @@ export function streamAI(
         const decoder = new TextDecoder();
         let buffer = "";
 
-        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done: streamDone, value } = await reader.read();
           if (streamDone) break;
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
-          // Keep incomplete last line in buffer
+          
           buffer = lines.pop() ?? "";
 
           for (const line of lines) {
@@ -119,16 +97,15 @@ export function streamAI(
               }
 
               if (typeof parsed.error === "string") {
-                // Server-side error in stream — treat as done with warning
+                
                 callbacks.onChunk(`\n\n*Server error: ${parsed.error}*`);
               }
             } catch {
-              // Malformed JSON — skip silently
+              
             }
           }
         }
 
-        // Stream ended without [DONE] — still call onDone
         if (!done) {
           done = true;
           callbacks.onDone();
@@ -142,13 +119,12 @@ export function streamAI(
           callbacks.onError(err instanceof Error ? err : new Error(String(err)));
           return;
         }
-        // Exponential back-off before retry
+        
         await new Promise<void>((r) => setTimeout(r, 600 * attempt));
       }
     }
   };
 
-  // Fire and forget — errors surface through callbacks
   run();
 
   return {

@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -50,7 +45,6 @@ export function CollaborationPanel() {
   const [expanded, setExpanded] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  
   useEffect(() => {
     if (!sessionId || !selectedFile) return;
     let cancelled = false;
@@ -66,7 +60,6 @@ export function CollaborationPanel() {
     return () => { cancelled = true; };
   }, [sessionId, selectedFile, setComments, setCommentsLoading]);
 
-  
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
@@ -79,7 +72,6 @@ export function CollaborationPanel() {
     return () => { cancelled = true; };
   }, [sessionId, setCommentCounts]);
 
-  
   const handleSubmit = useCallback(async () => {
     if (!sessionId || !selectedFile || !message.trim()) return;
     setIsSending(true);
@@ -94,7 +86,6 @@ export function CollaborationPanel() {
     finally { setIsSending(false); }
   }, [sessionId, selectedFile, message, author, addComment]);
 
-  
   const handleResolve = useCallback(async (commentId: string) => {
     if (!sessionId) return;
     try {
@@ -103,7 +94,6 @@ export function CollaborationPanel() {
     } catch {  }
   }, [sessionId, updateComment]);
 
-  
   const handleDelete = useCallback(async (commentId: string) => {
     if (!sessionId) return;
     removeComment(commentId); 
@@ -112,7 +102,6 @@ export function CollaborationPanel() {
     } catch {  }
   }, [sessionId, removeComment]);
 
-  
   const handleShare = useCallback(async () => {
     if (!sessionId) return;
     try {
@@ -129,7 +118,6 @@ export function CollaborationPanel() {
     setTimeout(() => setCopied(false), 2000);
   }, [shareUrl]);
 
-  
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -352,8 +340,6 @@ export function CollaborationPanel() {
     </div>
   );
 }
-
-
 
 function formatTimeAgo(ts: string): string {
   try {

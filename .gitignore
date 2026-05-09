@@ -1,6 +1,3 @@
-frontend/build_errors.txt
-frontend/tsconfig.tsbuildinfo
-
 # Dependencies
 node_modules/
 __pycache__/
@@ -10,8 +7,11 @@ venv/
 env/
 
 # Build output
+dist/
+build/
 frontend/dist/
 *.egg-info/
+frontend/tsconfig.tsbuildinfo
 
 # IDE
 .vscode/
@@ -30,37 +30,19 @@ frontend/dist/
 Thumbs.db
 desktop.ini
 
-# Sessions (generated at runtime)
+# Runtime & Sessions
 backend/sessions/
-
-# Database (generated at runtime)
 backend/*.db
 backend/*.sqlite
 
-# Logs
-*.log
-
-# Coverage
-htmlcov/
-.coverage
-
-# Misc
-*.bak
-*.tmp
-
-
-node_modules/
-.env
-dist/
-build/
-*.log
-
-#temp / logs
-
+# Logs & Temp
 *.log
 logs/
 *.tmp
 *.cache
-__pycache__/
-*.pyc
-.env
+*.bak
+frontend/build_errors.txt
+
+# Coverage
+htmlcov/
+.coverage

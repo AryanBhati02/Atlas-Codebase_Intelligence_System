@@ -1,9 +1,3 @@
-"""
-Shared session data loader with LRU caching.
-
-Avoids re-parsing large JSON files (parsed.json, graph.json) on every 
-API request. Uses file modification time for automatic cache invalidation.
-"""
 
 import json
 import logging
@@ -12,15 +6,11 @@ from pathlib import Path
 
 logger = logging.getLogger("codebase-intel.cache")
 
-
 @lru_cache(maxsize=16)
 def _load_json_cached(path_str: str, mtime: float) -> dict | list:
-    """LRU-cached JSON loader. Keyed by path + mtime for auto-invalidation."""
     return json.loads(Path(path_str).read_text(encoding="utf-8"))
 
-
 def load_parsed(session_dir: Path) -> list[dict]:
-    """Load parsed.json with LRU caching. Returns [] if not found."""
     path = session_dir / "parsed.json"
     if not path.exists():
         return []
@@ -32,9 +22,7 @@ def load_parsed(session_dir: Path) -> list[dict]:
         logger.warning(f"Failed to load parsed.json: {e}")
         return []
 
-
 def load_graph(session_dir: Path) -> dict:
-    """Load graph.json with LRU caching. Returns empty graph if not found."""
     path = session_dir / "graph.json"
     if not path.exists():
         return {"nodes": [], "edges": []}
@@ -46,9 +34,7 @@ def load_graph(session_dir: Path) -> dict:
         logger.warning(f"Failed to load graph.json: {e}")
         return {"nodes": [], "edges": []}
 
-
 def load_dead_code(session_dir: Path) -> dict:
-    """Load dead_code.json with LRU caching. Returns empty result if not found."""
     path = session_dir / "dead_code.json"
     if not path.exists():
         return {"dead_files": [], "dead_functions": [], "dead_exports": [], "summary": {}}

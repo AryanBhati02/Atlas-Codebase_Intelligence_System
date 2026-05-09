@@ -1,10 +1,3 @@
-/**
- * All typed API wrappers.  Every call goes through the configured client
- * from client.ts which handles retries, session headers, and error toasts.
- *
- * Cancellable calls return { promise, cancel } so components can abort
- * superseded requests inside useEffect cleanup.
- */
 
 export { client } from "./client";
 
@@ -35,10 +28,6 @@ import type {
   CommentCountsResponse,
   ShareTokenResponse,
 } from "../types";
-
-// ---------------------------------------------------------------------------
-// Analysis
-// ---------------------------------------------------------------------------
 
 export async function analyzeSession(
   sessionId: string
@@ -124,10 +113,6 @@ export async function getGraph(sessionId: string): Promise<GraphData> {
   return res.data;
 }
 
-// ---------------------------------------------------------------------------
-// Files
-// ---------------------------------------------------------------------------
-
 export interface CancellableFileContent {
   promise: Promise<FileContentResponse>;
   cancel: () => void;
@@ -157,10 +142,6 @@ export async function getFileContent(
   );
   return res.data;
 }
-
-// ---------------------------------------------------------------------------
-// AI — basic
-// ---------------------------------------------------------------------------
 
 export interface CancellableRequest<T> {
   promise: Promise<T>;
@@ -251,10 +232,6 @@ export async function askQuestion(
   return res.data;
 }
 
-// ---------------------------------------------------------------------------
-// Settings
-// ---------------------------------------------------------------------------
-
 export async function getSettings(): Promise<SettingsResponse> {
   const res = await client.get<SettingsResponse>("/api/settings");
   return res.data;
@@ -325,10 +302,6 @@ export async function selectModel(
   return res.data;
 }
 
-// ---------------------------------------------------------------------------
-// Static analysis
-// ---------------------------------------------------------------------------
-
 export async function getDeadCode(
   sessionId: string
 ): Promise<DeadCodeResponse> {
@@ -348,10 +321,6 @@ export async function getFunctionGraph(
   );
   return res.data;
 }
-
-// ---------------------------------------------------------------------------
-// Advanced AI
-// ---------------------------------------------------------------------------
 
 export function generateReadmeCancellable(
   sessionId: string
@@ -432,10 +401,6 @@ export async function generatePRReview(
   return res.data;
 }
 
-// ---------------------------------------------------------------------------
-// Git
-// ---------------------------------------------------------------------------
-
 export async function getGitTimeline(
   sessionId: string
 ): Promise<TimelineResponse> {
@@ -459,10 +424,6 @@ export async function getCoverage(
   const res = await client.get<CoverageResponse>(`/api/git/coverage/${sessionId}`);
   return res.data;
 }
-
-// ---------------------------------------------------------------------------
-// Collaboration
-// ---------------------------------------------------------------------------
 
 export async function postComment(
   sessionId: string,

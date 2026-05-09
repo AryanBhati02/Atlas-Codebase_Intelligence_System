@@ -13,8 +13,7 @@ export interface Profiler {
   measure<T>(fn: () => T): T;
   getStats(): ProfilerStats;
   reset(): void;
-  /** For array-returning functions: record the result length so getStats().lastCallCount reflects it. */
-  setLastResultCount(n: number): void;
+    setLastResultCount(n: number): void;
 }
 
 const WINDOW_MS = 1000;

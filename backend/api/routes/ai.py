@@ -1,10 +1,3 @@
-"""AI endpoints — file explanation, code analysis, beginner guide, Q&A.
-
-Includes both blocking (POST, JSON) and streaming (GET/POST, SSE) variants.
-Streaming endpoints use FastAPI StreamingResponse with text/event-stream media type.
-Each SSE chunk is:  data: {"text": "..."}\n\n
-Terminated by:      data: [DONE]\n\n
-"""
 
 import json
 from pathlib import Path
@@ -39,28 +32,22 @@ _SSE_HEADERS = {
     "Connection": "keep-alive",
 }
 
-
 def _sse_chunk(text: str) -> str:
     return f"data: {json.dumps({'text': text})}\n\n"
-
 
 def _sse_done() -> str:
     return "data: [DONE]\n\n"
 
-
 def _sse_error(msg: str) -> str:
     return f"data: {json.dumps({'error': msg})}\n\n"
 
-
 async def _stream_prompt(prompt: str):
-    """Async generator that wraps route_stream for use in StreamingResponse."""
     try:
         async for chunk in route_stream(prompt):
             yield _sse_chunk(chunk)
     except Exception as e:
         yield _sse_error(str(e))
     yield _sse_done()
-
 
 def _load_repo_name(session_dir: Path, fallback: str) -> str:
     meta_path = session_dir / "meta.json"
@@ -71,11 +58,6 @@ def _load_repo_name(session_dir: Path, fallback: str) -> str:
         except Exception:
             pass
     return fallback
-
-
-# ---------------------------------------------------------------------------
-# Blocking endpoints (existing, unchanged)
-# ---------------------------------------------------------------------------
 
 @router.post("/explain", response_model=AIExplainResponse)
 async def ai_explain(request: AIExplainRequest):
@@ -112,7 +94,6 @@ async def ai_explain(request: AIExplainRequest):
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
 
-
 @router.post("/analyze-code", response_model=AIAnalyzeCodeResponse)
 async def ai_analyze(request: AIAnalyzeCodeRequest):
     try:
@@ -130,7 +111,6 @@ async def ai_analyze(request: AIAnalyzeCodeRequest):
     response = AIAnalyzeCodeResponse(analysis=result["analysis"], source=result["source"])
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
-
 
 @router.post("/beginner-guide", response_model=BeginnerGuideResponse)
 async def ai_beginner_guide(request: BeginnerGuideRequest):
@@ -160,7 +140,6 @@ async def ai_beginner_guide(request: BeginnerGuideRequest):
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
 
-
 @router.post("/qa", response_model=QAResponse)
 async def ai_qa(request: QARequest):
     try:
@@ -188,17 +167,11 @@ async def ai_qa(request: QARequest):
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
 
-
-# ---------------------------------------------------------------------------
-# SSE Streaming endpoints
-# ---------------------------------------------------------------------------
-
 @router.get("/explain/stream")
 async def ai_explain_stream(
     session_id: str = Query(...),
     file_path: str = Query(...),
 ):
-    """Stream an AI explanation of a specific file, token by token."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -212,7 +185,6 @@ async def ai_explain_stream(
     all_parsed = load_parsed(session_dir)
     parsed = next((p for p in all_parsed if p["path"] == file_path), {})
 
-    # Build "imported_by" — files that list this file in their imports
     imported_by = [p["path"] for p in all_parsed if file_path in p.get("imports", [])]
 
     repo_name = _load_repo_name(session_dir, session_id)
@@ -233,10 +205,8 @@ async def ai_explain_stream(
     prompt = build_explain_prompt(file_data)
     return StreamingResponse(_stream_prompt(prompt), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-
 @router.post("/analyze/stream")
 async def ai_analyze_stream(request: AIAnalyzeCodeRequest):
-    """Stream a code analysis, token by token. Accepts POST body because code can be large."""
     try:
         session_dir = get_session_dir(request.session_id)
     except FileNotFoundError:
@@ -245,7 +215,6 @@ async def ai_analyze_stream(request: AIAnalyzeCodeRequest):
     all_parsed = load_parsed(session_dir)
     parsed = next((p for p in all_parsed if p["path"] == request.file_path), {})
 
-    # Get 10 lines before and after the selection from the file for context
     full_path = session_dir / "repo" / request.file_path
     content_before = ""
     content_after = ""
@@ -271,10 +240,8 @@ async def ai_analyze_stream(request: AIAnalyzeCodeRequest):
     prompt = build_refactor_prompt(request.code, file_context)
     return StreamingResponse(_stream_prompt(prompt), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-
 @router.get("/beginner/stream")
 async def ai_beginner_stream(session_id: str = Query(...)):
-    """Stream an onboarding guide for the repository, token by token."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -286,21 +253,17 @@ async def ai_beginner_stream(session_id: str = Query(...)):
 
     repo_name = _load_repo_name(session_dir, session_id)
 
-    # Build repo summary for the prompt
     file_tree = [f["path"] for f in all_parsed]
     total_loc = sum(f.get("loc", 0) for f in all_parsed)
 
-    # Count languages
     lang_counts: dict[str, int] = {}
     for f in all_parsed:
         lang = f.get("language") or "Other"
         lang_counts[lang] = lang_counts.get(lang, 0) + 1
 
-    # Find entry points
     entry_names = {"main", "app", "index", "server", "__main__"}
     entry_points = [f["path"] for f in all_parsed if Path(f["path"]).stem.lower() in entry_names]
 
-    # Find most-imported files (appear in other files' imports lists)
     import_counts: dict[str, int] = {}
     for f in all_parsed:
         for imp in f.get("imports", []):
@@ -324,14 +287,12 @@ async def ai_beginner_stream(session_id: str = Query(...)):
     prompt = build_onboarding_prompt(repo_summary)
     return StreamingResponse(_stream_prompt(prompt), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-
 @router.get("/qa/stream")
 async def ai_qa_stream(
     session_id: str = Query(...),
     question: str = Query(...),
     history: str = Query(default="[]"),
 ):
-    """Stream a codebase Q&A answer, token by token."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -343,17 +304,14 @@ async def ai_qa_stream(
 
     repo_dir = session_dir / "repo"
 
-    # Parse conversation history
     try:
         history_list: list[dict] = json.loads(history)
     except Exception:
         history_list = []
 
-    # Find relevant files (reuse the keyword-matching logic from ai_client)
     from core.ai.ai_client import _find_relevant_files
     relevant = _find_relevant_files(question, all_parsed, repo_dir)
 
-    # Build context with file excerpts
     context_items: list[dict] = []
     for f in relevant[:5]:
         item = dict(f)
@@ -369,7 +327,7 @@ async def ai_qa_stream(
     prompt = build_qa_prompt(question, context_items, history_list)
 
     async def qa_generator():
-        # First emit referenced files as metadata so the client can display them
+                                                                                
         refs = [{"path": f["path"], "relevance_reason": "matched query"} for f in relevant[:5]]
         yield f"data: {json.dumps({'refs': refs})}\n\n"
         async for chunk in route_stream(prompt):
@@ -378,13 +336,11 @@ async def ai_qa_stream(
 
     return StreamingResponse(qa_generator(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-
 @router.get("/security/stream")
 async def ai_security_stream(
     session_id: str = Query(...),
     file_path: str = Query(...),
 ):
-    """Run a security scan on a specific file and stream the AI analysis."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -398,7 +354,6 @@ async def ai_security_stream(
     all_parsed = load_parsed(session_dir)
     parsed = next((p for p in all_parsed if p["path"] == file_path), {})
 
-    # Run pattern-based scan on entire repo to get findings for this file
     repo_dir = session_dir / "repo"
     scan_result = scan_security(all_parsed, repo_dir)
     file_findings = [f for f in scan_result["findings"] if f.get("file") == file_path]
@@ -412,13 +367,11 @@ async def ai_security_stream(
     prompt = build_security_prompt(file_data, file_findings)
     return StreamingResponse(_stream_prompt(prompt), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-
 @router.get("/refactor/stream")
 async def ai_refactor_stream(
     session_id: str = Query(...),
     file_path: str = Query(...),
 ):
-    """Stream AI refactoring suggestions for an entire file."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -434,10 +387,8 @@ async def ai_refactor_stream(
     dead_code = load_dead_code(session_dir)
     dead_exports = dead_code.get("dead_exports", [])
 
-    # Use the existing refactor suggestion builder (which has a great prompt)
     result = await get_refactor_suggestions(file_path, parsed, content, dead_exports)
 
-    # For streaming, re-run with route_stream instead of returning the blocking result
     lang = parsed.get("language", "Unknown")
     file_context = {
         "file_path": file_path,
@@ -450,10 +401,8 @@ async def ai_refactor_stream(
     prompt = build_refactor_prompt(content[:3000], file_context)
     return StreamingResponse(_stream_prompt(prompt), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-
 @router.get("/readme/stream")
 async def ai_readme_stream(session_id: str = Query(...)):
-    """Stream a README generation for the repository."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -467,7 +416,6 @@ async def ai_readme_stream(session_id: str = Query(...)):
     repo_name = _load_repo_name(session_dir, session_id)
     repo_dir = session_dir / "repo"
 
-    # Build repo summary
     file_tree = [f["path"] for f in all_parsed]
     total_loc = sum(f.get("loc", 0) for f in all_parsed)
     lang_counts: dict[str, int] = {}
@@ -500,7 +448,6 @@ async def ai_readme_stream(session_id: str = Query(...)):
 
     from core.ai.prompts import build_onboarding_prompt
 
-    # Build a README-specific prompt (reuse onboarding data, different task)
     name = repo_name
     tree_str = "\n".join(f"  {p}" for p in file_tree[:40])
     if len(file_tree) > 40:
@@ -543,13 +490,11 @@ async def ai_readme_stream(session_id: str = Query(...)):
 
     return StreamingResponse(_stream_prompt(readme_prompt), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-
 @router.get("/pr-review/stream")
 async def ai_pr_review_stream(
     session_id: str = Query(...),
     file_paths: str = Query(default=""),
 ):
-    """Stream a PR review for the specified files (comma-separated) or full repo."""
     try:
         session_dir = get_session_dir(session_id)
     except FileNotFoundError:
@@ -565,7 +510,6 @@ async def ai_pr_review_stream(
     repo_name = _load_repo_name(session_dir, session_id)
     repo_dir = session_dir / "repo"
 
-    # Build a streaming PR review prompt
     targets = [f for f in all_parsed if f["path"] in selected] if selected else sorted(
         all_parsed, key=lambda x: -x.get("complexity_score", 0)
     )[:10]
@@ -576,7 +520,6 @@ async def ai_pr_review_stream(
         for f in targets
     )
 
-    # Include actual source for up to 3 files
     code_snippets = ""
     for f in targets[:3]:
         try:

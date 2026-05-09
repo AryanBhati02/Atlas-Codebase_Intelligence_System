@@ -1,5 +1,3 @@
-"""Complexity scorer — normalizes metrics and computes weighted score 0-1."""
-
 
 def _normalize(value: float, values: list[float]) -> float:
     if not values:
@@ -9,7 +7,6 @@ def _normalize(value: float, values: list[float]) -> float:
     if max_v == min_v:
         return 0.5
     return (value - min_v) / (max_v - min_v)
-
 
 def score_files(parsed_files: list[dict]) -> list[dict]:
     if not parsed_files:

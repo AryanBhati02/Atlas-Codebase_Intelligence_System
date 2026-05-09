@@ -2,10 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ══════════════════════════════════════════════
-   DESIGN SYSTEM — CSS Custom Properties
-   ══════════════════════════════════════════════ */
-
 :root {
   --bg-base: #050508;
   --bg-surface: rgba(8, 8, 14, 0.7);
@@ -186,7 +182,6 @@
   --surface-section-border: rgba(0, 0, 0, 0.06);
 }
 
-/* ── Reset ───────────────────────────────── */
 * {
   margin: 0;
   padding: 0;
@@ -218,7 +213,6 @@ body {
   min-height: 100vh;
 }
 
-/* ── Noise texture overlay ───────────────── */
 body::before {
   content: "";
   position: fixed;
@@ -242,7 +236,6 @@ body::before {
   }
 }
 
-/* ── Background Gradient (deep space) ────── */
 .bg-grid-pattern {
   background-image:
     radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 82, 200, 0.15), transparent),
@@ -250,7 +243,6 @@ body::before {
     radial-gradient(ellipse 40% 40% at 15% 80%, rgba(139, 92, 246, 0.04), transparent);
 }
 
-/* ── Glass Card ──────────────────────────── */
 .glass-card {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
@@ -264,7 +256,6 @@ body::before {
   box-shadow: 0 0 40px var(--accent-purple-subtle), 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-/* ── Scrollbar ───────────────────────────── */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -284,7 +275,6 @@ body::before {
   background: var(--scrollbar-thumb-hover);
 }
 
-/* ── Shimmer Effect ──────────────────────── */
 .shimmer {
   background: linear-gradient(90deg,
       var(--accent-purple-subtle) 25%,
@@ -305,7 +295,6 @@ body::before {
   }
 }
 
-/* ── Gradient Text ───────────────────────── */
 .gradient-text {
   background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-cyan) 50%, var(--accent-violet) 100%);
   -webkit-background-clip: text;
@@ -320,7 +309,6 @@ body::before {
   background-clip: text;
 }
 
-/* ── Glow Effects ────────────────────────── */
 .glow-purple {
   box-shadow: 0 0 24px var(--accent-purple-glow), 0 0 80px rgba(124, 110, 224, 0.04);
 }
@@ -338,15 +326,11 @@ body::before {
   height: 1px;
 }
 
-/* ── Drop Zone ───────────────────────────── */
 .drop-zone-active {
   border-color: rgba(124, 110, 224, 0.6) !important;
   background: var(--accent-purple-subtle) !important;
 }
 
-/* ══════════════════════════════════════════════
-   PREMIUM CURSOR SYSTEM
-   ══════════════════════════════════════════════ */
 .cursor-glow {
   position: fixed;
   width: 400px;
@@ -387,9 +371,6 @@ body::before {
   }
 }
 
-/* ══════════════════════════════════════════════
-   WORKSPACE LAYOUT
-   ══════════════════════════════════════════════ */
 .dashboard-layout {
   display: flex;
   flex-direction: column;
@@ -507,7 +488,6 @@ body::before {
   overflow-x: hidden;
 }
 
-/* ── Resize Handle ───────────────────────── */
 .resize-handle {
   width: 4px;
   cursor: col-resize;
@@ -533,9 +513,6 @@ body::before {
   box-shadow: 0 0 8px var(--resize-handle-bg);
 }
 
-/* ══════════════════════════════════════════════
-   REACT FLOW — Premium Graph Styles
-   ══════════════════════════════════════════════ */
 .react-flow__background {
   background: transparent !important;
 }
@@ -599,9 +576,6 @@ body::before {
   stroke-width: 2 !important;
 }
 
-/* ══════════════════════════════════════════════
-   GRAPH NODE — Premium Glowing Nodes
-   ══════════════════════════════════════════════ */
 .graph-node {
   padding: 6px 14px;
   border-radius: 10px;
@@ -669,7 +643,6 @@ body::before {
   background: linear-gradient(135deg, rgba(246, 196, 69, 0.08), transparent 60%);
 }
 
-/* Dimmed nodes (when another node is selected) */
 .graph-node.dimmed {
   opacity: 0.3;
   filter: grayscale(0.3);
@@ -681,7 +654,6 @@ body::before {
   filter: grayscale(0);
 }
 
-/* Dead code ghost styling */
 .graph-node.dead-node {
   opacity: 0.25;
   border-style: dashed;
@@ -712,7 +684,6 @@ body::before {
   }
 }
 
-/* Timeline slider */
 .timeline-slider::-webkit-slider-thumb {
   appearance: none;
   width: 12px;
@@ -739,9 +710,6 @@ body::before {
   border: 2px solid var(--bg-base);
 }
 
-/* ══════════════════════════════════════════════
-   FILE TREE — Refined Explorer
-   ══════════════════════════════════════════════ */
 .tree-item {
   display: flex;
   align-items: center;
@@ -785,9 +753,6 @@ body::before {
   box-shadow: 0 0 10px currentColor;
 }
 
-/* ══════════════════════════════════════════════
-   AI CONTENT — Markdown Rendering
-   ══════════════════════════════════════════════ */
 .ai-content h1,
 .ai-content h2,
 .ai-content h3 {
@@ -856,9 +821,6 @@ body::before {
   color: var(--accent-cyan);
 }
 
-/* ══════════════════════════════════════════════
-   MONACO EDITOR
-   ══════════════════════════════════════════════ */
 .monaco-wrapper {
   flex: 1;
   min-height: 0;
@@ -868,9 +830,6 @@ body::before {
   border-radius: 0;
 }
 
-/* ══════════════════════════════════════════════
-   ANALYZING OVERLAY — Premium Loading
-   ══════════════════════════════════════════════ */
 .analyzing-overlay {
   position: fixed;
   inset: 0;
@@ -913,9 +872,6 @@ body::before {
   }
 }
 
-/* ══════════════════════════════════════════════
-   Q&A CHAT
-   ══════════════════════════════════════════════ */
 .qa-answer {
   background: var(--qa-answer-bg);
   border: 1px solid var(--border-subtle);
@@ -929,9 +885,6 @@ body::before {
   box-shadow: 0 2px 12px var(--accent-purple-subtle);
 }
 
-/* ══════════════════════════════════════════════
-   SETTINGS PANEL
-   ══════════════════════════════════════════════ */
 .settings-backdrop {
   position: fixed;
   inset: 0;
@@ -982,9 +935,6 @@ body::before {
   }
 }
 
-/* ══════════════════════════════════════════════
-   ANIMATIONS
-   ══════════════════════════════════════════════ */
 @keyframes shake {
 
   0%,
@@ -1051,9 +1001,6 @@ body::before {
   }
 }
 
-/* ══════════════════════════════════════════════
-   FUNCTION GRAPH SUB-PANEL
-   ══════════════════════════════════════════════ */
 .fn-graph-panel {
   position: relative;
   width: 100%;
@@ -1093,10 +1040,6 @@ body::before {
   border-color: rgba(107, 114, 128, 0.2);
 }
 
-/* ══════════════════════════════════════════════
-   INTERACTIVE MICRO-ANIMATIONS (PREMIUM)
-   ══════════════════════════════════════════════ */
-
 button {
   transition:
     background 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
@@ -1127,7 +1070,6 @@ textarea:focus-visible {
   box-shadow: 0 0 0 4px var(--accent-purple-subtle);
 }
 
-/* Stat pill — elegant hover */
 .stat-pill {
   transition: all 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
   cursor: default;
@@ -1146,7 +1088,6 @@ textarea:focus-visible {
   transition-duration: 0.1s;
 }
 
-/* Panel borders — soft inner glow */
 .panel-left::after,
 .panel-right::after {
   content: "";
@@ -1181,7 +1122,6 @@ textarea:focus-visible {
   opacity: 0.5;
 }
 
-/* Header bottom glow line */
 .dashboard-header::after {
   content: "";
   position: absolute;
@@ -1198,7 +1138,6 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
-/* Tab buttons — premium underline animation */
 .tab-btn {
   position: relative;
   overflow: hidden;
@@ -1222,7 +1161,6 @@ textarea:focus-visible {
   width: 60%;
 }
 
-/* Ambient edge glow for center panel */
 .panel-center::after {
   content: "";
   position: absolute;
@@ -1237,7 +1175,6 @@ textarea:focus-visible {
       transparent 100%);
 }
 
-/* Smooth selection text */
 ::selection {
   background: var(--selection-bg);
   color: var(--selection-text);
@@ -1252,9 +1189,6 @@ a:hover {
   text-shadow: 0 0 12px rgba(34, 211, 238, 0.15);
 }
 
-/* ══════════════════════════════════════════════
-   COMMAND PALETTE — Premium Overlay
-   ══════════════════════════════════════════════ */
 .cmd-backdrop {
   position: fixed;
   inset: 0;
@@ -1543,9 +1477,6 @@ a:hover {
   font-weight: 500;
 }
 
-/* ══════════════════════════════════════════════
-   INGEST MODAL
-   ══════════════════════════════════════════════ */
 .ingest-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1567,9 +1498,6 @@ a:hover {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 }
 
-/* ══════════════════════════════════════════════
-   EMPTY STATE
-   ══════════════════════════════════════════════ */
 .empty-state-center {
   display: flex;
   flex-direction: column;
@@ -1600,9 +1528,6 @@ a:hover {
   transform: translateX(4px);
 }
 
-/* ══════════════════════════════════════════════
-   RESPONSIVE
-   ══════════════════════════════════════════════ */
 @media (max-width: 1024px) {
 
   .panel-left,

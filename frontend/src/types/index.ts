@@ -1,13 +1,5 @@
-/**
- * Complete type system for the Atlas frontend.
- * All types are strict — no `any`, no implicit undefined on indexed access.
- */
 
 import type { Node, Edge } from "reactflow";
-
-// ============================================================
-// AI provider types
-// ============================================================
 
 export type AIProvider =
   | "ollama"
@@ -22,10 +14,6 @@ export interface AIResponse {
   tokensUsed: number;
   durationMs: number;
 }
-
-// ============================================================
-// Session / analysis lifecycle
-// ============================================================
 
 export type SessionStatus =
   | "queued"
@@ -43,10 +31,6 @@ export interface AnalysisSession {
   parsedFiles: number;
   createdAt: string;
 }
-
-// ============================================================
-// Symbol & file data
-// ============================================================
 
 export type SymbolKind = "function" | "class" | "constant" | "variable";
 
@@ -69,10 +53,6 @@ export interface FileData {
   dependents: string[];
 }
 
-// ============================================================
-// Graph node / edge (extends ReactFlow)
-// ============================================================
-
 export interface AppNodeData {
   filePath: string;
   language: string | null;
@@ -90,10 +70,6 @@ export interface AppEdgeData {
 }
 
 export type AppEdge = Edge<AppEdgeData>;
-
-// ============================================================
-// Ingest
-// ============================================================
 
 export interface FileEntry {
   path: string;
@@ -113,10 +89,6 @@ export interface IngestResponse {
 }
 
 export type IngestTab = "github" | "upload";
-
-// ============================================================
-// Analysis / parse
-// ============================================================
 
 export interface ParsedFile {
   path: string;
@@ -161,10 +133,6 @@ export interface AnalyzeResponse {
   graph: GraphData;
 }
 
-// ============================================================
-// File content
-// ============================================================
-
 export interface FileContentResponse {
   path: string;
   content: string;
@@ -172,10 +140,6 @@ export interface FileContentResponse {
   loc: number;
   size_bytes: number;
 }
-
-// ============================================================
-// AI — basic
-// ============================================================
 
 export interface AIExplainResponse {
   file_path: string;
@@ -218,10 +182,6 @@ export interface QAHistoryEntry {
   timestamp: number;
 }
 
-// ============================================================
-// File tree
-// ============================================================
-
 export interface TreeNode {
   name: string;
   path: string;
@@ -231,10 +191,6 @@ export interface TreeNode {
   size_bytes?: number | undefined;
   complexity_score?: number | undefined;
 }
-
-// ============================================================
-// Settings / providers
-// ============================================================
 
 export interface ProviderInfo {
   name: string;
@@ -284,10 +240,6 @@ export interface ClearCacheResponse {
   message: string;
 }
 
-// ============================================================
-// Dead code
-// ============================================================
-
 export interface DeadFileEntry {
   path: string;
   reason: string;
@@ -319,10 +271,6 @@ export interface DeadCodeResponse {
   summary: DeadCodeSummary;
 }
 
-// ============================================================
-// Function graph
-// ============================================================
-
 export interface FunctionNode {
   id: string;
   name: string;
@@ -347,10 +295,6 @@ export interface FunctionGraphResponse {
   edges: FunctionEdge[];
 }
 
-// ============================================================
-// Advanced AI
-// ============================================================
-
 export interface ReadmeResponse {
   readme: string;
   source: string;
@@ -362,7 +306,6 @@ export interface RefactorResponse {
   source: string;
 }
 
-/** Strict security finding — matches the backend schema exactly. */
 export interface SecurityFinding {
   file: string;
   line: number;
@@ -402,10 +345,6 @@ export interface PRReviewResponse {
   source: string;
 }
 
-// ============================================================
-// Git timeline
-// ============================================================
-
 export interface FileChange {
   path: string;
   status: string;
@@ -442,10 +381,6 @@ export interface CoverageResponse {
   files_covered: number;
   avg_coverage: number;
 }
-
-// ============================================================
-// Collaboration
-// ============================================================
 
 export interface Comment {
   id: string;

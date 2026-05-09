@@ -3,7 +3,6 @@ import logging
 from fastapi.testclient import TestClient
 import warnings
 
-
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 sys.path.insert(0, ".")
@@ -14,11 +13,9 @@ client = TestClient(app)
 def run_tests():
     print("🚀 Starting E2E Verification...")
     
-    
     res = client.get("/api/health")
     assert res.status_code == 200, f"Health check failed: {res.text}"
     print("✅ Health check passed")
-    
     
     print("📦 Ingesting repository...")
     res = client.post("/api/ingest/github", json={"url": "https://github.com/expressjs/express"})
@@ -26,7 +23,6 @@ def run_tests():
     data = res.json()
     session_id = data["session_id"]
     print(f"✅ Ingest passed (Session ID: {session_id}), parsed {len(data.get('files', []))} files.")
-    
     
     print("⚙️ Running analysis pipeline...")
     res = client.post(f"/api/analyze/start/{session_id}")
@@ -46,12 +42,10 @@ def run_tests():
         raise Exception("Analysis timed out in test.")
     print("✅ Analysis passed")
     
-    
     print("💀 Checking dead code...")
     res = client.get(f"/api/analysis/dead-code/{session_id}")
     assert res.status_code == 200, f"Dead code failed: {res.text}"
     print("✅ Dead code analysis passed (No crashes!)")
-    
     
     print("🔗 Checking share endpoint...")
     res = client.get(f"/api/comments/{session_id}/share")

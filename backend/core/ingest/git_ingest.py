@@ -1,18 +1,3 @@
-"""
-GitHub repository ingestion via shallow git clone.
-
-All cloning is done via subprocess (not GitPython) with:
-  --depth=1        →  fetch only the latest commit tree (~10× faster)
-  --single-branch  →  skip other branches
-  --no-tags        →  skip tag objects
-
-The clone subprocess runs inside asyncio.to_thread() so FastAPI's event
-loop is never blocked, even for large repositories.
-
-Post-clone directory scanning respects IGNORED_DIRS / IGNORED_EXTENSIONS
-from config.py (node_modules, __pycache__, .git, *.min.js, etc. are
-excluded automatically by scan_directory).
-"""
 
 import asyncio
 import logging
@@ -24,19 +9,13 @@ from models.schemas import FileEntry
 
 logger = logging.getLogger("codebase-intel.ingest.git")
 
-
 class GitIngestError(Exception):
-    """Structured clone/ingest error with a machine-readable error_code."""
 
     def __init__(self, message: str, error_code: str):
         super().__init__(message)
         self.error_code = error_code
 
-
-# ── URL helpers ───────────────────────────────────────────────────────────────
-
 def validate_github_url(url: str) -> bool:
-    """Return True only for well-formed github.com repository URLs."""
     url = url.strip().lower()
     valid_prefixes = (
         "https://github.com/",
@@ -48,9 +27,7 @@ def validate_github_url(url: str) -> bool:
     path_parts = url.split("github.com/")[-1].strip("/").split("/")
     return len(path_parts) >= 2 and all(part for part in path_parts[:2])
 
-
 def extract_repo_name(url: str) -> str:
-    """Return 'owner/repo' from any github.com clone URL."""
     url = url.rstrip("/")
     if url.endswith(".git"):
         url = url[:-4]
@@ -59,17 +36,7 @@ def extract_repo_name(url: str) -> str:
         return f"{parts[-2]}/{parts[-1]}"
     return parts[-1] if parts else "unknown"
 
-
-# ── Core clone logic ──────────────────────────────────────────────────────────
-
 def _do_clone_sync(url: str, repo_dir: Path, depth: int = 1) -> None:
-    """
-    Execute git clone synchronously.  Intended to run inside asyncio.to_thread().
-
-    Raises GitIngestError with a specific error_code on every failure path
-    so that callers can build structured HTTP responses without inspecting
-    raw error strings.
-    """
     cmd = [
         "git", "clone",
         f"--depth={depth}",
@@ -127,24 +94,11 @@ def _do_clone_sync(url: str, repo_dir: Path, depth: int = 1) -> None:
 
     logger.info(f"Clone complete → {repo_dir}")
 
-
-# ── Public async API ──────────────────────────────────────────────────────────
-
 async def clone_repository_async(
     url: str,
     session_dir: Path,
     depth: int = 1,
 ) -> tuple[str, list[FileEntry]]:
-    """
-    Clone a GitHub repository (non-blocking) and return (repo_name, file_entries).
-
-    Runs the blocking git subprocess in a thread via asyncio.to_thread() so the
-    FastAPI event loop remains responsive during the clone.
-
-    Raises:
-        ValueError        — URL failed validation.
-        GitIngestError    — clone failed with a structured error_code.
-    """
     url = url.strip()
     if not validate_github_url(url):
         raise ValueError(
@@ -156,16 +110,10 @@ async def clone_repository_async(
 
     await asyncio.to_thread(_do_clone_sync, url, repo_dir, depth)
 
-    # scan_directory filters out node_modules, __pycache__, .git, *.min.js, etc.
-    # via IGNORED_DIRS and IGNORED_EXTENSIONS in config.py.
     files = await asyncio.to_thread(scan_directory, repo_dir)
     return repo_name, files
 
-
-# ── Sync fallback (tests / backward compat) ───────────────────────────────────
-
 def clone_repository(url: str, session_dir: Path) -> tuple[str, list[FileEntry]]:
-    """Synchronous clone. Use clone_repository_async in production."""
     url = url.strip()
     if not validate_github_url(url):
         raise ValueError(

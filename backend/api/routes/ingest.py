@@ -1,13 +1,3 @@
-"""
-Ingest API routes — GitHub shallow clone and ZIP upload.
-
-Both endpoints are fully async:
-  POST /ingest/github  — clones via asyncio.to_thread (never blocks event loop)
-  POST /ingest/upload  — extracts ZIP via asyncio.to_thread
-
-After ingestion the caller should POST to /analyze/start/{session_id} to trigger
-the analysis pipeline (which runs as a Celery task or daemon thread).
-"""
 
 import json
 import logging
@@ -24,27 +14,15 @@ logger = logging.getLogger("codebase-intel.routes.ingest")
 
 router = APIRouter(prefix="/ingest", tags=["Ingest"])
 
-
 def _save_session_meta(session_dir, repo_name: str, files, source_type: str) -> None:
-    """Persist session metadata and file entries for the analysis pipeline."""
     meta = {"repo_name": repo_name, "source_type": source_type}
     (session_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
     entries = [f.model_dump() for f in files]
     (session_dir / "file_entries.json").write_text(json.dumps(entries), encoding="utf-8")
 
-
-# ── GitHub clone ──────────────────────────────────────────────────────────────
-
 @router.post("/github", response_model=IngestResponse)
 async def ingest_github(request: GitHubIngestRequest):
-    """
-    Shallow-clone a public GitHub repository and return the file list.
-
-    Uses depth=1 (single commit) for ~10× faster clones.
-    The actual file parsing and graph construction is NOT done here —
-    call POST /analyze/start/{session_id} after this endpoint returns.
-    """
     session_id, session_dir = create_session()
     logger.info(f"[{session_id}] GitHub ingest requested: {request.url}")
 
@@ -74,7 +52,7 @@ async def ingest_github(request: GitHubIngestRequest):
             },
         )
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:                
         logger.error(f"[{session_id}] Unexpected ingest error: {exc}", exc_info=True)
         raise HTTPException(
             status_code=500,
@@ -97,18 +75,8 @@ async def ingest_github(request: GitHubIngestRequest):
         source_type="github",
     )
 
-
-# ── ZIP upload ────────────────────────────────────────────────────────────────
-
 @router.post("/upload", response_model=IngestResponse)
 async def ingest_upload(file: UploadFile = File(...)):
-    """
-    Accept a ZIP archive and extract it into a session directory.
-
-    Extraction runs in asyncio.to_thread() so large archives don't block
-    the event loop.  Zip-bomb and path-traversal protections are enforced
-    before extraction begins.
-    """
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(
             status_code=400,
@@ -122,7 +90,6 @@ async def ingest_upload(file: UploadFile = File(...)):
     zip_path = session_dir / "upload.zip"
     logger.info(f"[{session_id}] ZIP upload started: {file.filename}")
 
-    # Stream to disk in 1 MB chunks — avoids loading the whole file into RAM.
     try:
         with open(zip_path, "wb") as fh:
             while True:
@@ -155,7 +122,7 @@ async def ingest_upload(file: UploadFile = File(...)):
             },
         )
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:                
         logger.error(f"[{session_id}] ZIP extraction failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=500,

@@ -1,8 +1,4 @@
 
-
-
-
-
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -43,8 +39,6 @@ import { getAppState } from "../../store/appStore";
 import { useSessionStore } from "../../store/sessionStore";
 import { getFileContent, explainFile } from "../../api/api";
 
-
-
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string | undefined }>> = {
   FileCode2,
   Code2,
@@ -71,8 +65,6 @@ function getIcon(name: string) {
   return ICON_MAP[name] || FileCode2;
 }
 
-
-
 export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -97,18 +89,15 @@ export function CommandPalette() {
     }
   }, [isOpen, allCommands]);
 
-  
   const results = useMemo(() => {
     if (!isOpen) return [];
     return searchIndex.search(query, 25);
   }, [isOpen, query, allCommands]);
 
-  
   useEffect(() => {
     setActiveIndex(0);
   }, [results]);
 
-  
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -126,7 +115,6 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [isOpen]);
 
-  
   useEffect(() => {
     if (isOpen) {
       setQuery("");
@@ -138,7 +126,6 @@ export function CommandPalette() {
     }
   }, [isOpen]);
 
-  
   useEffect(() => {
     const item = itemRefs.current[activeIndex];
     if (item && listRef.current) {
@@ -154,7 +141,6 @@ export function CommandPalette() {
     }
   }, [activeIndex]);
 
-  
   const executeCommand = useCallback(
     (cmd: Command) => {
       const ctx: CommandContext = {
@@ -166,12 +152,12 @@ export function CommandPalette() {
             try {
               const content = await getFileContent(s.sessionId, path);
               s.setFileContent(content);
-            } catch { /* no-op */ }
+            } catch {  }
             try {
               s.setAILoading(true);
               const ai = await explainFile(s.sessionId, path);
               s.setAIExplanation(ai.explanation, ai.source);
-            } catch { /* no-op */ } finally {
+            } catch {  } finally {
               s.setAILoading(false);
             }
           }
@@ -189,7 +175,6 @@ export function CommandPalette() {
     []
   );
 
-  
   const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "ArrowDown") {
@@ -207,7 +192,6 @@ export function CommandPalette() {
     [results, activeIndex, executeCommand]
   );
 
-  
   const grouped = useMemo(() => {
     const groups: { category: string; items: Command[] }[] = [];
     const seen = new Set<string>();
@@ -223,7 +207,6 @@ export function CommandPalette() {
     return groups;
   }, [results]);
 
-  
   let flatIndex = -1;
 
   return (
@@ -354,8 +337,6 @@ export function CommandPalette() {
     </AnimatePresence>
   );
 }
-
-
 
 function highlightMatch(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text;

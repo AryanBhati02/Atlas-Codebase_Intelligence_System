@@ -1,8 +1,4 @@
 
-
-
-
-
 export type CommandCategory =
   | "navigation"
   | "graph"
@@ -29,8 +25,6 @@ export interface CommandContext {
   focusNode: (nodeId: string) => void;
 }
 
-
-
 const STATIC_COMMANDS: Command[] = [
   
   {
@@ -53,7 +47,6 @@ const STATIC_COMMANDS: Command[] = [
     execute: (ctx) => ctx.store.setSettingsPanelOpen(true),
   },
 
-  
   {
     id: "view:toggle-3d",
     category: "view",
@@ -87,7 +80,6 @@ const STATIC_COMMANDS: Command[] = [
     },
   },
 
-  
   {
     id: "analysis:toggle-dead-code",
     category: "analysis",
@@ -122,7 +114,6 @@ const STATIC_COMMANDS: Command[] = [
     },
   },
 
-  
   {
     id: "ai:show-insights",
     category: "ai",
@@ -202,7 +193,6 @@ const STATIC_COMMANDS: Command[] = [
     },
   },
 
-  
   {
     id: "git:timeline",
     category: "git",
@@ -215,7 +205,6 @@ const STATIC_COMMANDS: Command[] = [
     },
   },
 
-  
   {
     id: "graph:layout-force",
     category: "graph",
@@ -262,8 +251,6 @@ const STATIC_COMMANDS: Command[] = [
   },
 ];
 
-
-
 export const CATEGORY_META: Record<CommandCategory, { label: string; color: string }> = {
   navigation: { label: "Navigation", color: "#f6c445" },
   graph:      { label: "Graph",      color: "#7c6ee0" },
@@ -273,8 +260,6 @@ export const CATEGORY_META: Record<CommandCategory, { label: string; color: stri
   settings:   { label: "Settings",   color: "#94a3b8" },
   git:        { label: "Git",        color: "#10b981" },
 };
-
-
 
 let _commands: Command[] = [...STATIC_COMMANDS];
 
@@ -290,15 +275,9 @@ export function unregisterCommand(id: string): void {
   _commands = _commands.filter((c) => c.id !== id);
 }
 
-
-
-
-
-
 export function buildDynamicCommands(store: any): Command[] {
   const dynamic: Command[] = [];
 
-  
   if (store.graphData?.nodes) {
     for (const node of store.graphData.nodes) {
       dynamic.push({
@@ -321,7 +300,6 @@ export function buildDynamicCommands(store: any): Command[] {
     }
   }
 
-  
   if (store.parsedFiles) {
     for (const pf of store.parsedFiles) {
       for (const fn of pf.functions) {

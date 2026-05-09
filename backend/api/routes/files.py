@@ -1,4 +1,3 @@
-"""File content endpoint — returns raw source code for Monaco editor."""
 
 from fastapi import APIRouter, HTTPException, Query
 from models.schemas import FileContentResponse
@@ -7,7 +6,6 @@ from utils.session import get_session_dir
 from pathlib import Path
 
 router = APIRouter(prefix="/files", tags=["Files"])
-
 
 @router.get("/content/{session_id}", response_model=FileContentResponse)
 async def get_file_content(session_id: str, path: str = Query(...)):
@@ -20,7 +18,6 @@ async def get_file_content(session_id: str, path: str = Query(...)):
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail=f"File not found: {path}")
 
-    
     try:
         file_path.resolve().relative_to((session_dir / "repo").resolve())
     except ValueError:

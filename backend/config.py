@@ -1,19 +1,9 @@
-"""
-Application configuration for Codebase Intelligence Tool.
-Centralized settings for paths, filtering rules, and server config.
-"""
 
 from pathlib import Path
-
-
-
 
 BASE_DIR = Path(__file__).resolve().parent
 SESSIONS_DIR = BASE_DIR / "sessions"
 SESSIONS_DIR.mkdir(exist_ok=True)
-
-
-
 
 IGNORED_DIRS: set[str] = {
     "node_modules", ".git", "__pycache__", ".venv", "venv",
@@ -48,15 +38,9 @@ IGNORED_EXTENSIONS: set[str] = {
 
 MAX_FILE_SIZE_BYTES: int = 500 * 1024  
 
-
-
-
 MAX_FILES_LIMIT: int = 100_000          
 ANALYSIS_TIMEOUT_SECONDS: int = 600     
 PARSE_BATCH_SIZE: int = 500             
-
-
-
 
 CORS_ORIGINS: list[str] = [
     "http://localhost:5173",

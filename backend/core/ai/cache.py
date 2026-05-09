@@ -1,8 +1,3 @@
-"""SQLite-backed AI response cache.
-
-Uses file content SHA-256 hash to auto-invalidate stale entries.
-One database per session stored at session_dir/ai_cache.db.
-"""
 
 import hashlib
 import json
@@ -12,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger("codebase-intel.cache")
-
 
 def _get_db(session_dir: Path) -> sqlite3.Connection:
     db_path = session_dir / "ai_cache.db"
@@ -28,14 +22,10 @@ def _get_db(session_dir: Path) -> sqlite3.Connection:
     conn.commit()
     return conn
 
-
 def hash_content(content: str) -> str:
-    """SHA-256 hash of file content for cache invalidation."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
-
 def get_cached(session_dir: Path, key: str, current_hash: str) -> dict | None:
-    """Return cached response if hash matches, else None."""
     try:
         conn = _get_db(session_dir)
         row = conn.execute(
@@ -49,9 +39,7 @@ def get_cached(session_dir: Path, key: str, current_hash: str) -> dict | None:
         logger.warning(f"Cache read failed for key '{key}': {e}")
     return None
 
-
 def set_cached(session_dir: Path, key: str, file_hash: str, response: dict) -> None:
-    """Upsert a cache entry."""
     try:
         conn = _get_db(session_dir)
         conn.execute(

@@ -1,7 +1,4 @@
 
-
-
-
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { GitBranch, Loader2, ArrowRight, AlertCircle } from "lucide-react";

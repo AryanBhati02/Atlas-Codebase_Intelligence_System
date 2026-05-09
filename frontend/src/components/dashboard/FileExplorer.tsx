@@ -12,7 +12,6 @@ import { useSessionStore } from "../../store/sessionStore";
 import { getFileContent } from "../../api/api";
 import type { TreeNode, ParsedFile } from "../../types";
 
-
 function buildTree(files: ParsedFile[]): TreeNode[] {
   const root: TreeNode[] = [];
 
@@ -20,7 +19,6 @@ function buildTree(files: ParsedFile[]): TreeNode[] {
     const parts = f.path.split("/");
     let current = root;
 
-    // Using forEach so each `part` is guaranteed string (not string | undefined)
     parts.forEach((part, i) => {
       const isFile = i === parts.length - 1;
       const existing = current.find((n) => n.name === part);
@@ -124,7 +122,7 @@ export function FileExplorer() {
       const content = await getFileContent(sessionId, path);
       setFileContent(content);
     } catch {
-      // no-op — ExplainTab will show an error if needed
+      
     }
   };
 

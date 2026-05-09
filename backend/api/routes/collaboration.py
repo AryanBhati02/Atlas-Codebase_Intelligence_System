@@ -1,4 +1,3 @@
-"""Collaboration API — context-aware comments and session sharing."""
 
 from fastapi import APIRouter, HTTPException
 
@@ -20,7 +19,6 @@ from utils.session import get_session_dir
 
 router = APIRouter(prefix="/comments", tags=["Collaboration"])
 
-
 @router.post("", response_model=CommentResponse)
 async def create_comment(body: CommentCreate):
     try:
@@ -39,7 +37,6 @@ async def create_comment(body: CommentCreate):
     )
     return CommentResponse(**comment)
 
-
 @router.get("/{session_id}", response_model=list[CommentResponse])
 async def list_comments(
     session_id: str,
@@ -54,7 +51,6 @@ async def list_comments(
     results = get_comments(session_dir, session_id, target_id, target_type)
     return [CommentResponse(**c) for c in results]
 
-
 @router.get("/{session_id}/counts", response_model=CommentCountsResponse)
 async def comment_counts(session_id: str):
     try:
@@ -64,7 +60,6 @@ async def comment_counts(session_id: str):
 
     counts = get_comment_counts(session_dir, session_id)
     return CommentCountsResponse(counts=counts)
-
 
 @router.patch("/{session_id}/resolve/{comment_id}")
 async def toggle_resolve(session_id: str, comment_id: str):
@@ -78,7 +73,6 @@ async def toggle_resolve(session_id: str, comment_id: str):
         raise HTTPException(status_code=404, detail="Comment not found.")
     return CommentResponse(**result)
 
-
 @router.delete("/{session_id}/{comment_id}")
 async def remove_comment(session_id: str, comment_id: str):
     try:
@@ -91,11 +85,8 @@ async def remove_comment(session_id: str, comment_id: str):
         raise HTTPException(status_code=404, detail="Comment not found.")
     return {"status": "deleted"}
 
-
 @router.get("/{session_id}/share", response_model=ShareTokenResponse)
 async def share_session(session_id: str):
-    
-    
     
     raise HTTPException(
         status_code=501, 

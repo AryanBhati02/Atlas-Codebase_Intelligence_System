@@ -1,8 +1,6 @@
-"""Python parser using native ast module. Extracts imports, functions, classes, LOC, nesting."""
 
 import ast
 from pathlib import Path
-
 
 def _nesting_depth(node: ast.AST, depth: int = 0) -> int:
     max_d = depth
@@ -14,7 +12,6 @@ def _nesting_depth(node: ast.AST, depth: int = 0) -> int:
         else:
             max_d = max(max_d, _nesting_depth(child, depth))
     return max_d
-
 
 def parse_python(content: str, file_path: str) -> dict:
     imports: list[str] = []

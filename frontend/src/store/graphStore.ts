@@ -9,31 +9,27 @@ import type {
 } from "../types";
 
 export interface GraphState {
-  // Dead code analysis
+  
   deadCodeData: DeadCodeResponse | null;
   showDeadCode: boolean;
   isDeadCodeLoading: boolean;
 
-  // Function call graph
   functionGraphData: FunctionGraphResponse | null;
   functionGraphFile: string | null;
   showFunctionGraph: boolean;
   isFunctionGraphLoading: boolean;
 
-  // Git timeline
   timelineData: TimelineResponse | null;
   isTimelineLoading: boolean;
   selectedCommit: CommitEntry | null;
   commitDiff: CommitDiffResponse | null;
   isCommitDiffLoading: boolean;
 
-  // Coverage
   coverageData: CoverageResponse | null;
   isCoverageLoading: boolean;
   showCoverage: boolean;
   highlightedFiles: Set<string>;
 
-  // Actions
   setDeadCodeData: (data: DeadCodeResponse | null) => void;
   toggleDeadCode: () => void;
   setDeadCodeLoading: (loading: boolean) => void;

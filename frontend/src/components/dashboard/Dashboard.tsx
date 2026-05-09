@@ -82,7 +82,7 @@ export function Dashboard() {
       const status = await getAIStatus();
       setAIStatus(status);
     } catch {
-      // silently ignore polling failures
+      
     }
   }, [setAIStatus]);
 
@@ -150,7 +150,7 @@ export function Dashboard() {
       cancelled = true;
       abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [sessionId, isAnalyzed]);
 
   useEffect(() => {
@@ -161,7 +161,7 @@ export function Dashboard() {
         const data = await getCommentCounts(sessionId);
         if (!cancelled) setCommentCounts(data.counts);
       } catch {
-        // ignore
+        
       }
     })();
     return () => { cancelled = true; };

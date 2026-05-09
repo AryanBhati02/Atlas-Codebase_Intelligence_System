@@ -57,6 +57,49 @@ function compute3DLayout(
 }
 
 const sharedZoomRef = { current: 0 };
+const NODE_CAP = 500;
+const CLUSTER_THRESHOLD = 200;
+const shownNodesRef = { current: 0 };
+const totalNodesRef = { current: 0 };
+
+function getDirName3D(filePath: string): string {
+  const slash = filePath.indexOf("/");
+  return slash === -1 ? "(root)" : filePath.slice(0, slash);
+}
+
+interface RawNode {
+  id: string; label: string; language: string | null; complexity_score: number;
+}
+
+function buildClusterNodes(rawNodes: RawNode[]): RawNode[] {
+  const groups = new Map<string, RawNode[]>();
+  rawNodes.forEach((n) => {
+    const dir = getDirName3D(n.id);
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir)!.push(n);
+  });
+  const clusterNodes: RawNode[] = [];
+  groups.forEach((members, dir) => {
+    const fileCount = members.length;
+    const langCounts = new Map<string, number>();
+    let totalComplexity = 0;
+    members.forEach((m) => {
+      totalComplexity += (typeof m.complexity_score === "number" && isFinite(m.complexity_score)) ? m.complexity_score : 0.5;
+      if (m.language) langCounts.set(m.language, (langCounts.get(m.language) || 0) + 1);
+    });
+    let dominantLang: string | null = null;
+    let maxCount = 0;
+    langCounts.forEach((c, l) => { if (c > maxCount) { maxCount = c; dominantLang = l; } });
+    const clusterSize = 1.0 + Math.log2(Math.max(fileCount, 1)) * 0.5;
+    clusterNodes.push({
+      id: `3d-cluster-${dir}`,
+      label: `${dir} (${fileCount} files)`,
+      language: dominantLang,
+      complexity_score: clusterSize,
+    });
+  });
+  return clusterNodes;
+}
 
 function DualModeCamera({ centerOfMass }: { centerOfMass: THREE.Vector3 }) {
   const { camera, gl } = useThree();
@@ -168,101 +211,362 @@ function DualModeCamera({ centerOfMass }: { centerOfMass: THREE.Vector3 }) {
   return null;
 }
 
-function NodeSphere({ node, isSelected, isHovered, isDimmed, onSelect, onHover, themeColors }: {
-  node: Node3D; isSelected: boolean; isHovered: boolean; isDimmed: boolean;
-  onSelect: (id: string) => void; onHover: (id: string | null) => void;
+function InstancedNodes({
+  nodes, selectedId, hoveredId, connectedIds, deadFiles, onSelect, onHover, themeColors,
+}: {
+  nodes: Node3D[];
+  selectedId: string | null;
+  hoveredId: string | null;
+  connectedIds: Set<string> | null;
+  deadFiles: Set<string>;
+  onSelect: (id: string) => void;
+  onHover: (id: string | null) => void;
   themeColors: ThemeColors;
 }) {
-  const meshRef = useRef<THREE.Mesh>(null!);
-  const glowRef = useRef<THREE.Mesh>(null!);
-  const ringRef = useRef<THREE.Mesh>(null!);
-  const color = getColor(node.language);
-  const scale = isSelected ? 1.6 : isHovered ? 1.25 : 1;
-  const c = (typeof node.complexity === "number" && isFinite(node.complexity)) ? node.complexity : 0.5;
-  const baseSize = 0.35 + c * 0.45;
+  const meshRef = useRef<THREE.InstancedMesh>(null!);
+  const dummy = useRef(new THREE.Object3D());
+  const prevSelectedId = useRef<string | null>(null);
+  const prevHoveredId = useRef<string | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nearbyLabelIds = useRef<string[]>([]);
+  const nearbyLabelTick = useRef(0);
 
-  useFrame((_, delta) => {
+  const baseSizes = useMemo(() => {
+    return nodes.map((n) => {
+      const c = (typeof n.complexity === "number" && isFinite(n.complexity)) ? n.complexity : 0.5;
+      return 0.35 + c * 0.45;
+    });
+  }, [nodes]);
+
+  useEffect(() => {
+    const im = meshRef.current;
+    if (!im) return;
+    nodes.forEach((n, i) => {
+      const bs = baseSizes[i];
+      if (bs === undefined) return;
+      dummy.current.position.set(...n.position);
+      dummy.current.scale.setScalar(bs);
+      dummy.current.updateMatrix();
+      im.setMatrixAt(i, dummy.current.matrix);
+      const col = new THREE.Color(getColor(n.language));
+      im.setColorAt(i, col);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  }, [nodes, baseSizes]);
+
+  useFrame(({ camera }, delta) => {
+    const im = meshRef.current;
+    if (!im) return;
+
     const dt = Math.min(delta, 0.1);
-    if (meshRef.current) {
-      const t = scale * baseSize;
-      if (isFinite(t)) {
-        const s = meshRef.current.scale.x;
-        const l = THREE.MathUtils.lerp(s, t, 1 - Math.pow(0.001, dt));
-        if (isFinite(l)) meshRef.current.scale.setScalar(l);
-      }
-    }
-    if (glowRef.current) {
-      const gt = (isSelected ? 3.5 : isHovered ? 2.5 : 1.8) * baseSize;
-      if (isFinite(gt)) {
-        const g = glowRef.current.scale.x;
-        const gl2 = THREE.MathUtils.lerp(g, gt, 1 - Math.pow(0.001, dt));
-        if (isFinite(gl2)) glowRef.current.scale.setScalar(gl2);
-      }
-      const mat = glowRef.current.material as THREE.MeshBasicMaterial;
-      const to = isSelected ? 0.15 : isHovered ? 0.08 : 0.025;
-      const no = THREE.MathUtils.lerp(mat.opacity, to, 1 - Math.pow(0.01, dt));
-      if (isFinite(no)) mat.opacity = no;
-    }
+    const changed =
+      selectedId !== prevSelectedId.current ||
+      hoveredId !== prevHoveredId.current;
 
-    if (ringRef.current) {
-      ringRef.current.rotation.z += delta * 0.5;
-      ringRef.current.rotation.x += delta * 0.3;
-      const targetScale = isSelected ? baseSize * 2.2 : 0;
-      const rs = ringRef.current.scale.x;
-      ringRef.current.scale.setScalar(THREE.MathUtils.lerp(rs, targetScale, 1 - Math.pow(0.001, dt)));
+    if (!changed) return;
+
+    const prevSel = prevSelectedId.current;
+    const prevHov = prevHoveredId.current;
+    prevSelectedId.current = selectedId;
+    prevHoveredId.current = hoveredId;
+
+    const indicesToUpdate = new Set<number>();
+    const findIdx = (id: string | null) => {
+      if (id === null) return -1;
+      return nodes.findIndex((n) => n.id === id);
+    };
+
+    [prevSel, prevHov, selectedId, hoveredId].forEach((id) => {
+      const idx = findIdx(id);
+      if (idx >= 0) indicesToUpdate.add(idx);
+    });
+
+    indicesToUpdate.forEach((i) => {
+      const n = nodes[i];
+      const bs = baseSizes[i];
+      if (!n || bs === undefined) return;
+      const isSel = n.id === selectedId;
+      const isHov = n.id === hoveredId;
+      const isDim =
+        (connectedIds !== null && !connectedIds.has(n.id)) ||
+        deadFiles.has(n.id);
+
+      const scaleMultiplier = isSel ? 1.6 : isHov ? 1.25 : 1;
+      const targetScale = bs * scaleMultiplier;
+
+      im.getMatrixAt(i, dummy.current.matrix);
+      dummy.current.matrix.decompose(
+        dummy.current.position,
+        dummy.current.quaternion,
+        dummy.current.scale
+      );
+      const curScale = dummy.current.scale.x;
+      const newScale = THREE.MathUtils.lerp(curScale, targetScale, 1 - Math.pow(0.001, dt));
+      dummy.current.scale.setScalar(isFinite(newScale) ? newScale : targetScale);
+      dummy.current.updateMatrix();
+      im.setMatrixAt(i, dummy.current.matrix);
+
+      const baseColor = new THREE.Color(getColor(n.language));
+      if (isDim) {
+        baseColor.lerp(new THREE.Color(0x000000), 0.82);
+      } else if (isSel) {
+        baseColor.lerp(new THREE.Color(0xffffff), 0.3);
+      } else if (isHov) {
+        baseColor.lerp(new THREE.Color(0xffffff), 0.15);
+      }
+      im.setColorAt(i, baseColor);
+    });
+
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+
+    nearbyLabelTick.current += delta;
+    if (nearbyLabelTick.current > 1.0) {
+      nearbyLabelTick.current = 0;
+      const camPos = camera.position;
+      const distances = nodes.map((n, i) => ({
+        id: n.id,
+        dist: camPos.distanceToSquared(new THREE.Vector3(...n.position)),
+        i,
+      }));
+      distances.sort((a, b) => a.dist - b.dist);
+      nearbyLabelIds.current = distances.slice(0, 5).map((d) => d.id);
     }
   });
 
-  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation(); onSelect(node.id);
-  }, [node.id, onSelect]);
+  const handleClick = useCallback(
+    (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      const id = e.instanceId !== undefined ? nodes[e.instanceId]?.id : null;
+      if (id) onSelect(id);
+    },
+    [nodes, onSelect]
+  );
+
+  const handlePointerMove = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
+      if (hoverTimer.current) return;
+      hoverTimer.current = setTimeout(() => {
+        hoverTimer.current = null;
+        const id = e.instanceId !== undefined ? nodes[e.instanceId]?.id ?? null : null;
+        onHover(id);
+      }, 50);
+    },
+    [nodes, onHover]
+  );
+
+  const handlePointerOut = useCallback(() => {
+    if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; }
+    onHover(null);
+  }, [onHover]);
+
+  const labelNodes = useMemo(() => {
+    const ids = new Set<string>(nearbyLabelIds.current);
+    if (selectedId) ids.add(selectedId);
+    if (hoveredId) ids.add(hoveredId);
+    return nodes.filter((n) => ids.has(n.id));
+  }, [nodes, selectedId, hoveredId]);
+
+  if (nodes.length === 0) return null;
 
   return (
-    <group position={node.position}>
-      <mesh ref={glowRef}>
-        <sphereGeometry args={[1, 16, 16]} />
-        <meshBasicMaterial color={color} transparent opacity={0.025} depthWrite={false} />
-      </mesh>
-
-      <mesh ref={ringRef}>
-        <torusGeometry args={[1, 0.02, 8, 48]} />
-        <meshBasicMaterial color={themeColors.labelSelectedColor} transparent opacity={0.6} depthWrite={false} />
-      </mesh>
-
-      <mesh ref={meshRef} onClick={handleClick}
-        onPointerEnter={(e) => { e.stopPropagation(); onHover(node.id); }}
-        onPointerLeave={() => onHover(null)}
+    <>
+      <instancedMesh
+        ref={meshRef}
+        args={[undefined, undefined, nodes.length]}
+        onClick={handleClick}
+        onPointerMove={handlePointerMove}
+        onPointerOut={handlePointerOut}
       >
-        <sphereGeometry args={[1, 24, 24]} />
+        <sphereGeometry args={[1, 16, 16]} />
         <meshStandardMaterial
-          color={color} emissive={color}
-          emissiveIntensity={isSelected ? 0.7 : isHovered ? 0.35 : 0.1}
-          roughness={0.25} metalness={0.3}
-          transparent opacity={isDimmed ? 0.12 : 1}
+          roughness={0.3}
+          metalness={0.4}
+          emissive="#7c6ee0"
+          emissiveIntensity={0.05}
         />
-      </mesh>
+      </instancedMesh>
 
-      {(isSelected || isHovered || !isDimmed) && (
-        <Html position={[0, baseSize * scale + 0.7, 0]} center distanceFactor={10}
-          style={{
-            pointerEvents: "none", userSelect: "none", whiteSpace: "nowrap",
-            fontSize: isSelected ? "14px" : "10px",
-            fontWeight: isSelected ? 700 : 500,
-            fontFamily: "Inter, system-ui, sans-serif",
-            color: isSelected ? themeColors.labelSelectedColor : isDimmed ? themeColors.labelDimmed : themeColors.labelColor,
-            textShadow: "0 2px 8px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.95)",
-            opacity: isDimmed ? 0.35 : 1,
-            padding: isSelected ? "2px 8px" : "1px 4px",
-            borderRadius: "6px",
-            background: isSelected ? themeColors.labelSelectedBg : "transparent",
-            border: isSelected ? `1px solid ${themeColors.labelSelectedColor}25` : "none",
-            backdropFilter: isSelected ? "blur(4px)" : "none",
-          }}
-        >
-          {node.label}
-        </Html>
-      )}
-    </group>
+      {labelNodes.map((n) => {
+        const isSel = n.id === selectedId;
+        const isHov = n.id === hoveredId;
+        const c = (typeof n.complexity === "number" && isFinite(n.complexity)) ? n.complexity : 0.5;
+        const bs = 0.35 + c * 0.45;
+        const scaleMultiplier = isSel ? 1.6 : isHov ? 1.25 : 1;
+        const isDim =
+          (connectedIds !== null && !connectedIds.has(n.id)) ||
+          deadFiles.has(n.id);
+        return (
+          <Html
+            key={n.id}
+            position={[
+              n.position[0],
+              n.position[1] + bs * scaleMultiplier + 0.7,
+              n.position[2],
+            ]}
+            center
+            distanceFactor={10}
+            style={{
+              pointerEvents: "none",
+              userSelect: "none",
+              whiteSpace: "nowrap",
+              fontSize: isSel ? "14px" : "10px",
+              fontWeight: isSel ? 700 : 500,
+              fontFamily: "Inter, system-ui, sans-serif",
+              color: isSel
+                ? themeColors.labelSelectedColor
+                : isDim
+                ? themeColors.labelDimmed
+                : themeColors.labelColor,
+              textShadow: "0 2px 8px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.95)",
+              opacity: isDim ? 0.35 : 1,
+              padding: isSel ? "2px 8px" : "1px 4px",
+              borderRadius: "6px",
+              background: isSel ? themeColors.labelSelectedBg : "transparent",
+              border: isSel
+                ? `1px solid ${themeColors.labelSelectedColor}25`
+                : "none",
+              backdropFilter: isSel ? "blur(4px)" : "none",
+            }}
+          >
+            {n.label}
+          </Html>
+        );
+      })}
+    </>
+  );
+}
+
+function InstancedClusterNodes({
+  nodes, hoveredId, onSelect, onHover,
+}: {
+  nodes: Node3D[];
+  hoveredId: string | null;
+  onSelect: (id: string) => void;
+  onHover: (id: string | null) => void;
+}) {
+  const meshRef = useRef<THREE.InstancedMesh>(null!);
+  const dummy = useRef(new THREE.Object3D());
+  const prevHoveredId = useRef<string | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const im = meshRef.current;
+    if (!im) return;
+    nodes.forEach((n, i) => {
+      dummy.current.position.set(...n.position);
+      dummy.current.scale.setScalar(n.complexity);
+      dummy.current.updateMatrix();
+      im.setMatrixAt(i, dummy.current.matrix);
+      im.setColorAt(i, new THREE.Color(getColor(n.language)));
+    });
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  }, [nodes]);
+
+  useFrame((_, delta) => {
+    const im = meshRef.current;
+    if (!im) return;
+    if (hoveredId === prevHoveredId.current) return;
+    const prevHov = prevHoveredId.current;
+    prevHoveredId.current = hoveredId;
+    const dt = Math.min(delta, 0.1);
+    const toUpdate = new Set<number>();
+    [prevHov, hoveredId].forEach((id) => {
+      if (id === null) return;
+      const idx = nodes.findIndex((n) => n.id === id);
+      if (idx >= 0) toUpdate.add(idx);
+    });
+    toUpdate.forEach((i) => {
+      const n = nodes[i];
+      if (!n) return;
+      const isHov = n.id === hoveredId;
+      const baseScale = n.complexity;
+      const targetScale = isHov ? baseScale * 1.2 : baseScale;
+      im.getMatrixAt(i, dummy.current.matrix);
+      dummy.current.matrix.decompose(dummy.current.position, dummy.current.quaternion, dummy.current.scale);
+      const cur = dummy.current.scale.x;
+      const next = THREE.MathUtils.lerp(cur, targetScale, 1 - Math.pow(0.001, dt));
+      dummy.current.scale.setScalar(isFinite(next) ? next : targetScale);
+      dummy.current.updateMatrix();
+      im.setMatrixAt(i, dummy.current.matrix);
+      const col = new THREE.Color(getColor(n.language));
+      if (isHov) col.lerp(new THREE.Color(0xffffff), 0.25);
+      im.setColorAt(i, col);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  });
+
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    const id = e.instanceId !== undefined ? nodes[e.instanceId]?.id : null;
+    if (id) onSelect(id);
+  }, [nodes, onSelect]);
+
+  const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    if (hoverTimer.current) return;
+    hoverTimer.current = setTimeout(() => {
+      hoverTimer.current = null;
+      const id = e.instanceId !== undefined ? nodes[e.instanceId]?.id ?? null : null;
+      onHover(id);
+    }, 50);
+  }, [nodes, onHover]);
+
+  const handlePointerOut = useCallback(() => {
+    if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; }
+    onHover(null);
+  }, [onHover]);
+
+  if (nodes.length === 0) return null;
+
+  return (
+    <>
+      <instancedMesh
+        ref={meshRef}
+        args={[undefined, undefined, nodes.length]}
+        onClick={handleClick}
+        onPointerMove={handlePointerMove}
+        onPointerOut={handlePointerOut}
+      >
+        <icosahedronGeometry args={[1, 2]} />
+        <meshStandardMaterial
+          roughness={0.2}
+          metalness={0.5}
+          emissive="#a78bfa"
+          emissiveIntensity={0.12}
+        />
+      </instancedMesh>
+
+      {nodes.map((n) => {
+        const isHov = n.id === hoveredId;
+        return (
+          <Html
+            key={n.id}
+            position={[n.position[0], n.position[1] + n.complexity + 0.9, n.position[2]]}
+            center
+            distanceFactor={12}
+            style={{
+              pointerEvents: "none", userSelect: "none", whiteSpace: "nowrap",
+              fontSize: isHov ? "13px" : "11px",
+              fontWeight: isHov ? 700 : 600,
+              fontFamily: "Inter, system-ui, sans-serif",
+              color: isHov ? "#e0d7ff" : "#c4b5fd",
+              textShadow: "0 2px 10px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.9)",
+              padding: "2px 8px", borderRadius: "6px",
+              background: isHov ? "rgba(124,110,224,0.25)" : "transparent",
+              border: isHov ? "1px solid rgba(167,139,250,0.4)" : "none",
+              backdropFilter: isHov ? "blur(4px)" : "none",
+            }}
+          >
+            {n.label}
+          </Html>
+        );
+      })}
+    </>
   );
 }
 
@@ -339,15 +643,54 @@ function ThemeUpdater({ themeColors }: { themeColors: ThemeColors }) {
   return null;
 }
 
-function Graph3DScene() {
+function Graph3DScene({ expandedCluster3D, onExpandCluster }: {
+  expandedCluster3D: string | null;
+  onExpandCluster: (clusterId: string) => void;
+}) {
   const { graphData, selectedFile, sessionId, setSelectedFile, setFileContent,
     setAIExplanation, setAILoading, showDeadCode, deadCodeData } = useAppStore();
   const themeColors = useThemeStore((s) => s.colors);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  const { nodes3d, edges3d, nodeMap, connectedIds, centerOfMass } = useMemo(() => {
-    if (!graphData) return { nodes3d: [], edges3d: [], nodeMap: new Map<string, Node3D>(), connectedIds: null, centerOfMass: new THREE.Vector3() };
-    const { nodes3d, edges3d } = compute3DLayout(graphData.nodes, graphData.edges);
+  const isClustered = (graphData?.nodes.length ?? 0) > CLUSTER_THRESHOLD && expandedCluster3D === null;
+
+  const clusterChildMap = useMemo(() => {
+    if (!graphData) return new Map<string, RawNode[]>();
+    const m = new Map<string, RawNode[]>();
+    graphData.nodes.forEach((n) => {
+      const key = `3d-cluster-${getDirName3D(n.id)}`;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(n);
+    });
+    return m;
+  }, [graphData]);
+
+  const { nodes3d, edges3d, nodeMap, connectedIds, centerOfMass, totalNodes } = useMemo(() => {
+    const empty = { nodes3d: [] as Node3D[], edges3d: [] as Edge3D[], nodeMap: new Map<string, Node3D>(), connectedIds: null as Set<string> | null, centerOfMass: new THREE.Vector3(), totalNodes: 0 };
+    if (!graphData) return empty;
+
+    let rawNodes: RawNode[];
+    let rawEdges: { source: string; target: string }[];
+
+    if (isClustered) {
+      rawNodes = buildClusterNodes(graphData.nodes);
+      rawEdges = [];
+    } else if (expandedCluster3D !== null) {
+      const children = clusterChildMap.get(expandedCluster3D) ?? [];
+      rawNodes = children;
+      const childIds = new Set(children.map((c) => c.id));
+      rawEdges = graphData.edges.filter((e) => childIds.has(e.source) && childIds.has(e.target));
+    } else {
+      rawNodes = graphData.nodes;
+      rawEdges = graphData.edges;
+    }
+
+    const { nodes3d: allNodes3d, edges3d } = compute3DLayout(rawNodes, rawEdges);
+    const totalNodes = allNodes3d.length;
+    const nodes3d = totalNodes > NODE_CAP
+      ? [...allNodes3d].sort((a, b) => b.complexity - a.complexity).slice(0, NODE_CAP)
+      : allNodes3d;
+
     const nodeMap = new Map<string, Node3D>();
     const com = new THREE.Vector3();
     nodes3d.forEach((n) => { nodeMap.set(n.id, n); com.add(new THREE.Vector3(...n.position)); });
@@ -355,15 +698,15 @@ function Graph3DScene() {
 
     let connectedIds: Set<string> | null = null;
     const activeId = selectedFile || hoveredId;
-    if (activeId) {
+    if (activeId && !isClustered) {
       connectedIds = new Set<string>([activeId]);
       edges3d.forEach((e) => {
         if (e.source === activeId) connectedIds!.add(e.target);
         if (e.target === activeId) connectedIds!.add(e.source);
       });
     }
-    return { nodes3d, edges3d, nodeMap, connectedIds, centerOfMass: com };
-  }, [graphData, selectedFile, hoveredId]);
+    return { nodes3d, edges3d, nodeMap, connectedIds, centerOfMass: com, totalNodes };
+  }, [graphData, selectedFile, hoveredId, isClustered, expandedCluster3D, clusterChildMap]);
 
   const deadFiles = useMemo(() => {
     if (!showDeadCode || !deadCodeData) return new Set<string>();
@@ -371,14 +714,25 @@ function Graph3DScene() {
   }, [showDeadCode, deadCodeData]);
 
   const handleSelect = useCallback(async (id: string) => {
+    if (isClustered) {
+      onExpandCluster(id);
+      return;
+    }
     if (!sessionId) return;
     setSelectedFile(id);
     try { const c = await getFileContent(sessionId, id); setFileContent(c); } catch { }
     try { setAILoading(true); const ai = await explainFile(sessionId, id); setAIExplanation(ai.explanation, ai.source); } catch { }
     finally { setAILoading(false); }
-  }, [sessionId, setSelectedFile, setFileContent, setAIExplanation, setAILoading]);
+  }, [isClustered, onExpandCluster, sessionId, setSelectedFile, setFileContent, setAIExplanation, setAILoading]);
 
-  const handleBgClick = useCallback(() => setSelectedFile(null), [setSelectedFile]);
+  const handleBgClick = useCallback(() => {
+    if (!isClustered) setSelectedFile(null);
+  }, [isClustered, setSelectedFile]);
+
+  useEffect(() => {
+    shownNodesRef.current = nodes3d.length;
+    totalNodesRef.current = totalNodes;
+  });
 
   if (!graphData || graphData.nodes.length === 0) return null;
 
@@ -395,16 +749,38 @@ function Graph3DScene() {
 
       <GridFloor themeColors={themeColors} />
 
-      <EdgeLines edges={edges3d} nodeMap={nodeMap} selectedId={selectedFile} hoveredId={hoveredId} themeColors={themeColors} />
+      <EdgeLines edges={edges3d} nodeMap={nodeMap} selectedId={isClustered ? null : selectedFile} hoveredId={hoveredId} themeColors={themeColors} />
 
-      {nodes3d.map((node) => (
-        <NodeSphere key={node.id} node={node}
-          isSelected={selectedFile === node.id} isHovered={hoveredId === node.id}
-          isDimmed={(connectedIds !== null && !connectedIds.has(node.id)) || deadFiles.has(node.id)}
-          onSelect={handleSelect} onHover={setHoveredId}
+      {totalNodes > NODE_CAP && (
+        <Html position={[0, 22, 0]} center style={{
+          pointerEvents: "none", userSelect: "none", fontSize: "11px",
+          fontFamily: "Inter, system-ui, sans-serif", color: themeColors.labelDimmed,
+          background: themeColors.toolbarBg, border: `1px solid ${themeColors.toolbarBorder}`,
+          padding: "4px 10px", borderRadius: "8px", backdropFilter: "blur(6px)", whiteSpace: "nowrap",
+        }}>
+          Showing {NODE_CAP} of {totalNodes} nodes · sorted by complexity
+        </Html>
+      )}
+
+      {isClustered ? (
+        <InstancedClusterNodes
+          nodes={nodes3d}
+          hoveredId={hoveredId}
+          onSelect={handleSelect}
+          onHover={setHoveredId}
+        />
+      ) : (
+        <InstancedNodes
+          nodes={nodes3d}
+          selectedId={selectedFile}
+          hoveredId={hoveredId}
+          connectedIds={connectedIds}
+          deadFiles={deadFiles}
+          onSelect={handleSelect}
+          onHover={setHoveredId}
           themeColors={themeColors}
         />
-      ))}
+      )}
 
       <mesh position={[0, 0, -50]} onClick={handleBgClick} visible={false}>
         <planeGeometry args={[300, 300]} />
@@ -418,11 +794,18 @@ export function Graph3DView() {
   const { graphData } = useAppStore();
   const themeColors = useThemeStore((s) => s.colors);
   const [showControls, setShowControls] = useState(true);
+  const [expandedCluster3D, setExpandedCluster3D] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setShowControls(false), 6000);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    setExpandedCluster3D(null);
+  }, [graphData]);
+
+  const isClustered = (graphData?.nodes.length ?? 0) > CLUSTER_THRESHOLD && expandedCluster3D === null;
 
   if (!graphData || graphData.nodes.length === 0) {
     return (
@@ -445,9 +828,31 @@ export function Graph3DView() {
       >
         <color attach="background" args={[themeColors.threeBg]} />
         <fog attach="fog" args={[themeColors.threeFog, 500, 2500]} />
-        <Graph3DScene />
+        <Graph3DScene
+          expandedCluster3D={expandedCluster3D}
+          onExpandCluster={setExpandedCluster3D}
+        />
         <PerfBridge />
       </Canvas>
+
+      {expandedCluster3D !== null && (
+        <button
+          onClick={() => setExpandedCluster3D(null)}
+          style={{
+            position: "absolute", top: "1rem", right: "1rem", zIndex: 20,
+            display: "flex", alignItems: "center", gap: "6px",
+            padding: "6px 14px", borderRadius: "10px", cursor: "pointer",
+            fontSize: "11px", fontWeight: 600, fontFamily: "Inter, system-ui, sans-serif",
+            color: themeColors.labelSelectedColor,
+            background: themeColors.toolbarBg,
+            border: `1px solid ${themeColors.labelSelectedColor}55`,
+            backdropFilter: "blur(8px)",
+            transition: "opacity 0.2s",
+          }}
+        >
+          ← Back to clusters
+        </button>
+      )}
 
       <div
         className="absolute top-16 left-3 z-10 flex flex-col gap-1 px-3 py-2 rounded-xl backdrop-blur-md transition-opacity duration-700"
@@ -471,7 +876,20 @@ export function Graph3DView() {
         style={{ background: themeColors.toolbarBg, border: `1px solid ${themeColors.toolbarBorder}` }}>
         <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-[9px] font-medium" style={{ color: "var(--text-muted)" }}>
-          3D · {graphData.nodes.length} nodes · {graphData.edges.length} edges
+          {isClustered
+            ? `clusters · ${shownNodesRef.current} dirs · ${graphData.nodes.length} files`
+            : expandedCluster3D !== null
+              ? `files · ${shownNodesRef.current}${
+                  totalNodesRef.current > shownNodesRef.current
+                    ? ` of ${totalNodesRef.current}`
+                    : ""
+                } shown`
+              : `3D · ${shownNodesRef.current}${
+                  totalNodesRef.current > shownNodesRef.current
+                    ? ` of ${totalNodesRef.current}`
+                    : ""
+                } nodes · ${graphData.edges.length} edges`
+          }
         </span>
       </div>
 

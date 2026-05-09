@@ -1,9 +1,6 @@
-"""Pydantic schemas for all request/response models."""
 
 from pydantic import BaseModel
 from typing import Optional
-
-
 
 class GitHubIngestRequest(BaseModel):
     url: str
@@ -22,8 +19,6 @@ class IngestResponse(BaseModel):
     files: list[FileEntry]
     ingested_at: str
     source_type: str
-
-
 
 class ParsedFile(BaseModel):
     path: str
@@ -63,16 +58,12 @@ class AnalyzeResponse(BaseModel):
     parsed_files: list[ParsedFile] = []
     graph: GraphData = GraphData()
 
-
-
 class FileContentResponse(BaseModel):
     path: str
     content: str
     language: Optional[str] = None
     loc: int = 0
     size_bytes: int = 0
-
-
 
 class AIExplainRequest(BaseModel):
     session_id: str
@@ -94,8 +85,6 @@ class AIAnalyzeCodeResponse(BaseModel):
     analysis: str
     source: str
 
-
-
 class BeginnerGuideRequest(BaseModel):
     session_id: str
 
@@ -107,8 +96,6 @@ class BeginnerGuideResponse(BaseModel):
     guide: str
     top_files: list[TopFileEntry] = []
     source: str
-
-
 
 class QARequest(BaseModel):
     session_id: str
@@ -122,8 +109,6 @@ class QAResponse(BaseModel):
     answer: str
     referenced_files: list[FileReference] = []
     source: str
-
-
 
 class DeadFileEntry(BaseModel):
     path: str
@@ -151,8 +136,6 @@ class DeadCodeResponse(BaseModel):
     dead_exports: list[DeadExportEntry] = []
     summary: DeadCodeSummary = DeadCodeSummary()
 
-
-
 class FunctionNode(BaseModel):
     id: str
     name: str
@@ -174,16 +157,12 @@ class FunctionGraphResponse(BaseModel):
     nodes: list[FunctionNode] = []
     edges: list[FunctionEdge] = []
 
-
-
 class ReadmeRequest(BaseModel):
     session_id: str
 
 class ReadmeResponse(BaseModel):
     readme: str
     source: str
-
-
 
 class RefactorRequest(BaseModel):
     session_id: str
@@ -193,8 +172,6 @@ class RefactorResponse(BaseModel):
     file_path: str
     suggestions: str
     source: str
-
-
 
 class SecurityFinding(BaseModel):
     file: str
@@ -229,9 +206,6 @@ class SecurityScanResponse(BaseModel):
     summary: SecuritySummary = SecuritySummary()
     recommendations: list[SecurityRecommendation] = []
 
-
-
-
 class PRReviewRequest(BaseModel):
     session_id: str
     file_paths: list[str] = []
@@ -239,8 +213,6 @@ class PRReviewRequest(BaseModel):
 class PRReviewResponse(BaseModel):
     review: str
     source: str
-
-
 
 class FileChange(BaseModel):
     path: str
@@ -274,8 +246,6 @@ class CoverageResponse(BaseModel):
     files_covered: int = 0
     avg_coverage: float = 0
 
-
-
 class CommentCreate(BaseModel):
     session_id: str
     target_type: str  
@@ -303,19 +273,14 @@ class ShareTokenResponse(BaseModel):
     session_id: str
     share_url: str
 
-
-
 class ErrorResponse(BaseModel):
     error: str
     error_code: Optional[str] = None
     session_id: Optional[str] = None
     detail: Optional[str] = None
 
-
 class ProgressResponse(BaseModel):
-    """Returned by GET /api/progress/{session_id}."""
 
-    # Rich fields
     progress: float = 0.0
     files_done: int = 0
     total_files: int = 0
@@ -324,9 +289,7 @@ class ProgressResponse(BaseModel):
     partial_edges: list = []
     error: Optional[str] = None
 
-    # Legacy fields kept for backward compat with the frontend polling loop
     stage: str = "pending"
     current: int = 0
     total: int = 0
     done: bool = False
-

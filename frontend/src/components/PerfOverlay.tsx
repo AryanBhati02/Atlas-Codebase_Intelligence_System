@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import type { CSSProperties } from "react";
 import { useSessionStore } from "../store/sessionStore";
 import { usePerfStore } from "../stores/perfStore";
+import { enrichNodeProfiler } from "./dashboard/GraphView";
+import { visibleNodesProfiler } from "../utils/graphClustering";
 
-// performance.memory is a non-standard V8 extension not in lib.dom.d.ts
 interface MemoryInfo {
   readonly usedJSHeapSize: number;
   readonly jsHeapSizeLimit: number;
@@ -13,7 +14,6 @@ interface PerformanceWithMemory extends Performance {
   readonly memory?: MemoryInfo;
 }
 
-// Teach TypeScript about the opt-in build flag (Vite custom env var)
 declare global {
   interface ImportMetaEnv {
     readonly VITE_ENABLE_PERF?: string;
@@ -28,7 +28,12 @@ interface Metrics {
   heapLimitMB: number | null;
   nodeCount: number;
   edgeCount: number;
-  drawCalls: number | null; // null = 3D canvas not active
+  drawCalls: number | null; 
+  enrichNodeCallsPerSec: number;
+  enrichNodeAvgMs: number;
+  getVisibleNodesCallsPerSec: number;
+  getVisibleNodesAvgMs: number;
+  getVisibleNodesLastResultCount: number;
 }
 
 const INITIAL_METRICS: Metrics = {
@@ -40,10 +45,15 @@ const INITIAL_METRICS: Metrics = {
   nodeCount: 0,
   edgeCount: 0,
   drawCalls: null,
+  enrichNodeCallsPerSec: 0,
+  enrichNodeAvgMs: 0,
+  getVisibleNodesCallsPerSec: 0,
+  getVisibleNodesAvgMs: 0,
+  getVisibleNodesLastResultCount: 0,
 };
 
-const DISPLAY_INTERVAL_MS = 100; // throttle visible state to ~10 updates/sec
-const STALENESS_MS = 500;        // treat 3D as inactive if no draw-call update in this window
+const DISPLAY_INTERVAL_MS = 100; 
+const STALENESS_MS = 500;        
 
 function fpsColor(fps: number): string {
   if (fps >= 55) return "#4ade80";
@@ -59,7 +69,12 @@ function heapColor(usedMB: number, limitMB: number): string {
   return "#f87171";
 }
 
-// Module-level style objects — defined once, no allocation on re-render
+function avgMsColor(ms: number): string {
+  if (ms < 0.5) return "#4ade80";
+  if (ms < 2.0) return "#fbbf24";
+  return "#f87171";
+}
+
 const containerStyle: CSSProperties = {
   position: "fixed",
   bottom: 12,
@@ -108,7 +123,6 @@ export function PerfOverlay() {
   const [visible, setVisible] = useState(false);
   const [metrics, setMetrics] = useState<Metrics>(INITIAL_METRICS);
 
-  // Keyboard toggle — minimal: only a window keydown listener, zero other work
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.code === "KeyP" && e.shiftKey && (e.ctrlKey || e.metaKey)) {
@@ -120,21 +134,19 @@ export function PerfOverlay() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Measurement loop — created only when visible, torn down immediately when hidden
   useEffect(() => {
     if (!visible) return;
 
     let rafId: number;
     let lastTs = performance.now();
     let lastDisplay = 0;
-    const frameTs: number[] = []; // timestamps of frames within the rolling 1s window
+    const frameTs: number[] = []; 
 
     const tick = (now: number): void => {
       const raw = now - lastTs;
       lastTs = now;
-      const delta = Math.max(raw, 0.1); // guard against sub-millisecond deltas on first frame
+      const delta = Math.max(raw, 0.1); 
 
-      // Maintain rolling 1-second window of frame timestamps
       frameTs.push(now);
       for (;;) {
         const oldest = frameTs[0];
@@ -142,7 +154,6 @@ export function PerfOverlay() {
         frameTs.shift();
       }
 
-      // Throttle the state update that causes React to re-render (~10×/sec)
       if (now - lastDisplay >= DISPLAY_INTERVAL_MS) {
         lastDisplay = now;
 
@@ -159,7 +170,6 @@ export function PerfOverlay() {
           ? Math.round(mem.jsHeapSizeLimit / 1_048_576)
           : null;
 
-        // Imperative reads — no subscriptions, so these don't cause extra renders
         const { graphData } = useSessionStore.getState();
         const nodeCount = graphData?.nodes.length ?? 0;
         const edgeCount = graphData?.edges.length ?? 0;
@@ -168,7 +178,22 @@ export function PerfOverlay() {
         const is3DActive = performance.now() - perfState.lastUpdatedAt < STALENESS_MS;
         const drawCalls = is3DActive ? perfState.drawCalls : null;
 
-        setMetrics({ fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls });
+        const enrichStats = enrichNodeProfiler.getStats();
+        const visibleStats = visibleNodesProfiler.getStats();
+        perfState.setEnrichNodeCallsPerSec(enrichStats.callsPerSec);
+        perfState.setEnrichNodeAvgMs(enrichStats.avgMs);
+        perfState.setGetVisibleNodesCallsPerSec(visibleStats.callsPerSec);
+        perfState.setGetVisibleNodesAvgMs(visibleStats.avgMs);
+        perfState.setGetVisibleNodesLastResultCount(visibleStats.lastCallCount);
+
+        setMetrics({
+          fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls,
+          enrichNodeCallsPerSec: enrichStats.callsPerSec,
+          enrichNodeAvgMs: enrichStats.avgMs,
+          getVisibleNodesCallsPerSec: visibleStats.callsPerSec,
+          getVisibleNodesAvgMs: visibleStats.avgMs,
+          getVisibleNodesLastResultCount: visibleStats.lastCallCount,
+        });
       }
 
       rafId = requestAnimationFrame(tick);
@@ -178,10 +203,13 @@ export function PerfOverlay() {
     return () => cancelAnimationFrame(rafId);
   }, [visible]);
 
-  // Zero DOM output (and zero rAF work above) when hidden
   if (!visible) return null;
 
-  const { fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls } = metrics;
+  const {
+    fps, rollingFps, frameTimeMs, heapUsedMB, heapLimitMB, nodeCount, edgeCount, drawCalls,
+    enrichNodeCallsPerSec, enrichNodeAvgMs,
+    getVisibleNodesCallsPerSec, getVisibleNodesLastResultCount,
+  } = metrics;
 
   const fpsClr = fpsColor(rollingFps);
   const heapClr =
@@ -226,6 +254,26 @@ export function PerfOverlay() {
         <span style={labelStyle}>3D draw calls</span>
         <span style={drawCalls != null ? undefined : dimStyle}>
           {drawCalls ?? "—"}
+        </span>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>enrichNode/s</span>
+        <span>{enrichNodeCallsPerSec}</span>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>enrichNode avg</span>
+        <span style={{ color: avgMsColor(enrichNodeAvgMs) }}>
+          {enrichNodeAvgMs.toFixed(2)} ms
+        </span>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>visibleNodes/s</span>
+        <span>
+          {getVisibleNodesCallsPerSec}{" "}
+          <span style={dimStyle}>({getVisibleNodesLastResultCount})</span>
         </span>
       </div>
     </div>

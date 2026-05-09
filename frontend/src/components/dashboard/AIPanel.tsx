@@ -26,10 +26,6 @@ import { AdvancedAIPanel } from "./AdvancedAIPanel";
 
 type AITab = "explain" | "analyze" | "beginner" | "qa" | "advanced";
 
-// ---------------------------------------------------------------------------
-// Shared UI primitives
-// ---------------------------------------------------------------------------
-
 function SourceBadge({
   source,
   isStreaming,
@@ -110,10 +106,6 @@ function EmptyPrompt({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// ExplainTab — auto-streams when a file is selected, cancels on file change
-// ---------------------------------------------------------------------------
 
 function ExplainTab() {
   const selectedFile = useSessionStore((s) => s.selectedFile);
@@ -204,10 +196,6 @@ function ExplainTab() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// AnalyzeTab — reads from AI store (CodePanel streams into it)
-// ---------------------------------------------------------------------------
-
 function AnalyzeTab() {
   const aiAnalysis = useAiStore((s) => s.aiAnalysis);
   const isAIStreaming = useAiStore((s) => s.isAIStreaming);
@@ -237,10 +225,6 @@ function AnalyzeTab() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// BeginnerTab — streams on mount, persists to AI store to avoid re-streaming
-// ---------------------------------------------------------------------------
 
 function BeginnerTab() {
   const sessionId = useSessionStore((s) => s.sessionId);
@@ -284,7 +268,7 @@ function BeginnerTab() {
         onError: () => {
           setIsStreaming(false);
           ctrlRef.current = null;
-          didStreamRef.current = false; // allow retry
+          didStreamRef.current = false; 
         },
       }
     );
@@ -306,7 +290,7 @@ function BeginnerTab() {
       const fc = await getFileContent(sessionId, path);
       setFileContent(fc);
     } catch {
-      // no-op
+      
     }
   };
 
@@ -369,10 +353,6 @@ function BeginnerTab() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// QATab — streams each answer, cancels on component unmount
-// ---------------------------------------------------------------------------
 
 interface StreamingEntry {
   question: string;
@@ -472,7 +452,7 @@ function QATab() {
       const fc = await getFileContent(sessionId, path);
       setFileContent(fc);
     } catch {
-      // no-op
+      
     }
   };
 
@@ -639,10 +619,6 @@ function QATab() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Main AIPanel with tab bar
-// ---------------------------------------------------------------------------
 
 const TABS: { id: AITab; label: string; icon: typeof Brain }[] = [
   { id: "explain", label: "Explain", icon: Brain },

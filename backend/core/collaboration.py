@@ -1,13 +1,3 @@
-"""
-Collaboration — Context-aware comments and session sharing.
-
-Provides:
-  1. Comments attached to graph nodes, files, or functions
-  2. Session sharing with read-only links
-  3. Threaded replies (optional parent_id)
-
-Data is stored as JSON per session in comments.json.
-"""
 
 import json
 import logging
@@ -17,10 +7,8 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger("codebase-intel.collab")
 
-
 def _comments_path(session_dir: Path) -> Path:
     return session_dir / "comments.json"
-
 
 def _load_comments(session_dir: Path) -> list[dict]:
     path = _comments_path(session_dir)
@@ -32,11 +20,9 @@ def _load_comments(session_dir: Path) -> list[dict]:
             return []
     return []
 
-
 def _save_comments(session_dir: Path, comments: list[dict]) -> None:
     path = _comments_path(session_dir)
     path.write_text(json.dumps(comments, default=str, indent=2), encoding="utf-8")
-
 
 def add_comment(
     session_dir: Path,
@@ -47,20 +33,6 @@ def add_comment(
     author: str = "Anonymous",
     parent_id: str | None = None,
 ) -> dict:
-    """Add a context-aware comment.
-    
-    Args:
-        session_dir: Session workspace path
-        session_id: Session identifier
-        target_type: 'node' | 'file' | 'function'
-        target_id: ID of the target (file path, node id, function name)
-        message: Comment text
-        author: Author name
-        parent_id: Optional parent comment ID for threading
-    
-    Returns:
-        The created comment dict
-    """
     comments = _load_comments(session_dir)
     
     comment = {
@@ -79,42 +51,25 @@ def add_comment(
     _save_comments(session_dir, comments)
     return comment
 
-
 def get_comments(
     session_dir: Path,
     session_id: str,
     target_id: str | None = None,
     target_type: str | None = None,
 ) -> list[dict]:
-    """Get comments for a session, optionally filtered by target.
-    
-    Args:
-        session_dir: Session workspace path
-        session_id: Session identifier
-        target_id: Optional filter by target ID
-        target_type: Optional filter by target type
-    
-    Returns:
-        List of matching comments, newest first
-    """
     comments = _load_comments(session_dir)
     
-    
     result = [c for c in comments if c.get("session_id") == session_id]
-    
     
     if target_id:
         result = [c for c in result if c.get("target_id") == target_id]
     if target_type:
         result = [c for c in result if c.get("target_type") == target_type]
     
-    
     result.sort(key=lambda c: c.get("created_at", ""), reverse=True)
     return result
 
-
 def resolve_comment(session_dir: Path, comment_id: str) -> dict | None:
-    """Toggle resolved status of a comment."""
     comments = _load_comments(session_dir)
     
     for c in comments:
@@ -125,9 +80,7 @@ def resolve_comment(session_dir: Path, comment_id: str) -> dict | None:
     
     return None
 
-
 def delete_comment(session_dir: Path, comment_id: str) -> bool:
-    """Delete a comment by ID."""
     comments = _load_comments(session_dir)
     original_len = len(comments)
     comments = [c for c in comments if c.get("id") != comment_id]
@@ -137,13 +90,7 @@ def delete_comment(session_dir: Path, comment_id: str) -> bool:
         return True
     return False
 
-
 def get_comment_counts(session_dir: Path, session_id: str) -> dict[str, int]:
-    """Get comment counts per target_id for badge display.
-    
-    Returns:
-        {target_id: count} mapping
-    """
     comments = _load_comments(session_dir)
     counts: dict[str, int] = {}
     
@@ -154,11 +101,8 @@ def get_comment_counts(session_dir: Path, session_id: str) -> dict[str, int]:
     
     return counts
 
-
 def generate_share_token(session_dir: Path, session_id: str) -> str:
-    """Generate a shareable read-only token for a session."""
     share_path = session_dir / "share_token.json"
-    
     
     if share_path.exists():
         try:

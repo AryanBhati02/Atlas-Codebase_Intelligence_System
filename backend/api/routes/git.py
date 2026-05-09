@@ -1,4 +1,3 @@
-"""Git Timeline + Coverage API endpoints."""
 
 import json
 from fastapi import APIRouter, HTTPException
@@ -16,7 +15,6 @@ from utils.session import get_session_dir
 
 router = APIRouter(prefix="/git", tags=["Git Timeline"])
 
-
 @router.get("/timeline/{session_id}", response_model=TimelineResponse)
 async def git_timeline(session_id: str):
     try:
@@ -28,14 +26,11 @@ async def git_timeline(session_id: str):
     if not repo_dir.exists():
         raise HTTPException(status_code=404, detail="Repository not found.")
 
-    
     cached = get_cached_timeline(session_dir)
     if cached is not None:
         commits = [CommitEntry(**c) for c in cached]
         return TimelineResponse(commits=commits, total_commits=len(commits))
 
-    
-    
     import asyncio, subprocess
     try:
         await asyncio.to_thread(
@@ -47,17 +42,14 @@ async def git_timeline(session_id: str):
     except Exception:
         pass  
 
-    
     raw_commits = extract_timeline(repo_dir)
     if not raw_commits:
         return TimelineResponse(commits=[], total_commits=0)
 
-    
     cache_timeline(session_dir, raw_commits)
 
     commits = [CommitEntry(**c) for c in raw_commits]
     return TimelineResponse(commits=commits, total_commits=len(commits))
-
 
 @router.get("/diff/{session_id}", response_model=CommitDiffResponse)
 async def git_diff(session_id: str, commit: str):
@@ -79,7 +71,6 @@ async def git_diff(session_id: str, commit: str):
         timestamp=result.get("timestamp", ""),
         files=[FileChange(**f) for f in result.get("files", [])],
     )
-
 
 @router.get("/coverage/{session_id}", response_model=CoverageResponse)
 async def git_coverage(session_id: str):

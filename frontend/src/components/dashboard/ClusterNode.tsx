@@ -35,7 +35,6 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
 }: NodeProps<ClusterNodeData>) {
   const color = complexityColor(data.avgComplexity);
 
-  // Language breakdown from children (top 5 by file count)
   const langCounts = new Map<string, number>();
   for (const child of data.children) {
     const lang = child.data.language;
@@ -45,7 +44,6 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  // When expanded, render as a compact group-header anchor
   if (data.expanded) {
     return (
       <>
@@ -109,7 +107,6 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
     );
   }
 
-  // Collapsed state: full cluster card
   return (
     <>
       <Handle
@@ -134,7 +131,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
             "0 4px 28px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03)",
         }}
       >
-        {/* Header */}
+        {}
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <FolderClosed
             size={13}
@@ -155,7 +152,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
             {data.label}
           </span>
 
-          {/* File-count badge */}
+          {}
           <span
             style={{
               background: "rgba(124, 110, 224, 0.15)",
@@ -171,7 +168,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
             {data.fileCount} files
           </span>
 
-          {/* Expand button */}
+          {}
           <button
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -198,7 +195,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
           </button>
         </div>
 
-        {/* Language dots */}
+        {}
         {topLangs.length > 0 && (
           <div
             style={{
@@ -243,7 +240,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
           </div>
         )}
 
-        {/* Complexity bar */}
+        {}
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span
             style={{

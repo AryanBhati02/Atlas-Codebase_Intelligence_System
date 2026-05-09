@@ -1,4 +1,4 @@
-/// <reference lib="webworker" />
+
 import * as dagre from "dagre";
 
 interface RawNode {
@@ -44,7 +44,7 @@ self.onmessage = (event: MessageEvent<WorkerInput>): void => {
     });
 
     for (const node of nodes) {
-      // Cluster nodes are wider/taller than regular file nodes
+      
       const isCluster = node.type === "clusterNode";
       g.setNode(node.id, {
         width: isCluster ? 280 : 200,

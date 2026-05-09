@@ -1,29 +1,3 @@
-"""
-ProgressStore — thread-safe, disk-backed progress tracking for analysis sessions.
-
-Design rationale
-────────────────
-Analysis pipelines run either in a Celery worker process or a daemon thread.
-FastAPI's polling endpoint runs in the main async event loop. These three
-contexts cannot share in-memory state directly.
-
-Solution: disk is the source of truth.
-
-  Writer path (Celery worker / thread):
-      progress_store.update_sync(session_id, status="parsing", ...)
-      → acquires threading.Lock → reads progress.json → merges kwargs → writes progress.json
-
-  Reader path (FastAPI async endpoint):
-      progress_store.get_sync(session_id)
-      → reads progress.json from disk
-
-threading.Lock is used instead of asyncio.Lock because:
-  1. It works identically in sync (Celery) and async (FastAPI) contexts.
-  2. asyncio.Lock is bound to an event loop, which breaks when called
-     from a Celery worker's asyncio.run() context vs. the FastAPI loop.
-  3. Disk writes for a small JSON file take < 1 ms — brief lock holding
-     is acceptable even inside an async handler.
-"""
 
 import json
 import logging
@@ -41,7 +15,6 @@ _VALID_STATUSES = frozenset({
     "parsing", "scoring", "graph", "saving", "done", "error",
 })
 
-
 @dataclass
 class ProgressEntry:
     status: str = "queued"
@@ -52,7 +25,6 @@ class ProgressEntry:
     error_message: str = ""
 
     def as_legacy_dict(self) -> dict:
-        """Map to the format the existing frontend polling expects."""
         return {
             "stage": self.status,
             "current": self.parsed_files,
@@ -62,7 +34,6 @@ class ProgressEntry:
         }
 
     def as_rich_dict(self) -> dict:
-        """Full format for the /api/progress/{session_id} endpoint."""
         total = self.total_files or 1
         if self.status == "done":
             progress = 1.0
@@ -81,27 +52,12 @@ class ProgressEntry:
             "error": self.error_message or None,
         }
 
-
 class ProgressStore:
-    """
-    Disk-backed progress store. Thread-safe via threading.Lock.
-
-    All public methods are intentionally non-async so they can be called
-    from Celery tasks, daemon threads, and async route handlers without
-    event-loop concerns.
-    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
 
-    # ── Public API ────────────────────────────────────────────────────────────
-
     def update_sync(self, session_id: str, **kwargs) -> None:
-        """
-        Atomically update one or more fields of a session's progress entry.
-        Creates the entry if it does not exist yet.
-        Safe to call from Celery tasks, daemon threads, and async handlers.
-        """
         if "status" in kwargs and kwargs["status"] not in _VALID_STATUSES:
             logger.warning(
                 f"Unknown status '{kwargs['status']}' for {session_id}; ignoring"
@@ -118,18 +74,12 @@ class ProgressStore:
             self._write_disk(session_id, current)
 
     def get_sync(self, session_id: str) -> Optional[ProgressEntry]:
-        """
-        Read the current progress entry for a session.
-        Returns None if no progress has been recorded yet.
-        """
         return self._read_disk(session_id)
 
     def clear_sync(self, session_id: str) -> None:
-        """Remove the progress file for a session (e.g., on reset)."""
         with self._lock:
             self._delete_disk(session_id)
 
-    # Async shims — same semantics, callable with `await` from route handlers.
     async def update(self, session_id: str, **kwargs) -> None:
         self.update_sync(session_id, **kwargs)
 
@@ -138,8 +88,6 @@ class ProgressStore:
 
     async def clear(self, session_id: str) -> None:
         self.clear_sync(session_id)
-
-    # ── Disk I/O (private) ────────────────────────────────────────────────────
 
     def _progress_path(self, session_id: str) -> Path:
         return SESSIONS_DIR / session_id / "progress.json"
@@ -160,7 +108,7 @@ class ProgressStore:
             return None
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            # Tolerate extra/missing keys across schema versions
+                                                                
             valid_keys = set(ProgressEntry.__dataclass_fields__.keys())
             filtered = {k: v for k, v in data.items() if k in valid_keys}
             return ProgressEntry(**filtered)
@@ -174,6 +122,4 @@ class ProgressStore:
         except OSError as exc:
             logger.warning(f"Progress delete failed for {session_id}: {exc}")
 
-
-# Module-level singleton — import this everywhere.
 progress_store = ProgressStore()

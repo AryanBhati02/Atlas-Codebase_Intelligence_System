@@ -24,10 +24,6 @@ import type { StreamControl } from "../../api/aiStream";
 
 type AdvancedTab = "readme" | "refactor" | "security" | "pr-review";
 
-// ---------------------------------------------------------------------------
-// Shared UI
-// ---------------------------------------------------------------------------
-
 function SourceBadge({ source, isStreaming }: { source: string | null; isStreaming?: boolean }) {
   if (isStreaming) {
     return (
@@ -80,10 +76,6 @@ function StopButton({ onClick }: { onClick: () => void }) {
     </button>
   );
 }
-
-// ---------------------------------------------------------------------------
-// ReadmeTab
-// ---------------------------------------------------------------------------
 
 function ReadmeTab() {
   const { sessionId, readmeData, setReadmeData } = useAppStore();
@@ -211,10 +203,6 @@ function ReadmeTab() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// RefactorTab
-// ---------------------------------------------------------------------------
-
 function RefactorTab() {
   const { sessionId, selectedFile, refactorData, setRefactorData } = useAppStore();
   const [content, setContent] = useState(
@@ -224,7 +212,6 @@ function RefactorTab() {
   const ctrlRef = useRef<StreamControl | null>(null);
   const streamedFileRef = useRef<string | null>(null);
 
-  // Reset when selected file changes
   useEffect(() => {
     if (selectedFile !== streamedFileRef.current) {
       setContent(
@@ -330,10 +317,6 @@ function RefactorTab() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// SecurityTab — structured scan (not streamed) + structured display
-// ---------------------------------------------------------------------------
 
 function SecurityTab() {
   const { sessionId, securityData, setSecurityData, setSecurityLoading, isSecurityLoading } = useAppStore();
@@ -500,10 +483,6 @@ function SecurityTab() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// PRReviewTab
-// ---------------------------------------------------------------------------
-
 function PRReviewTab() {
   const { sessionId, selectedFile, prReviewData, setPRReviewData } = useAppStore();
   const [content, setContent] = useState(prReviewData?.review || "");
@@ -617,10 +596,6 @@ function PRReviewTab() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// AdvancedAIPanel root
-// ---------------------------------------------------------------------------
 
 const ADVANCED_TABS: { id: AdvancedTab; label: string; icon: typeof FileText }[] = [
   { id: "readme", label: "README", icon: FileText },

@@ -9,24 +9,20 @@ export interface RecentRepo {
 }
 
 export interface UiState {
-  // Panel visibility
+  
   isChatPanelOpen: boolean;
   showIngestModal: boolean;
   settingsPanelOpen: boolean;
   show3DGraph: boolean;
 
-  // Recent repos (persisted to localStorage)
   recentRepos: RecentRepo[];
 
-  // AI health indicator
   aiStatus: AIStatusResponse | null;
 
-  // Collaboration comments
   comments: Comment[];
   commentCounts: Record<string, number>;
   isCommentsLoading: boolean;
 
-  // Actions
   toggleChatPanel: () => void;
   setShowIngestModal: (show: boolean) => void;
   addRecentRepo: (repo: RecentRepo) => void;
@@ -48,7 +44,7 @@ function getStoredChatPanel(): boolean {
     const stored = localStorage.getItem("ci-chat-panel");
     if (stored === "false") return false;
   } catch {
-    // ignore storage errors
+    
   }
   return true;
 }
@@ -58,7 +54,7 @@ function getRecentRepos(): RecentRepo[] {
     const stored = localStorage.getItem("ci-recent-repos");
     if (stored) return JSON.parse(stored) as RecentRepo[];
   } catch {
-    // ignore storage errors
+    
   }
   return [];
 }
@@ -80,7 +76,7 @@ export const useUiStore = create<UiState>((set) => ({
       try {
         localStorage.setItem("ci-chat-panel", String(next));
       } catch {
-        // ignore
+        
       }
       return { isChatPanelOpen: next };
     }),
@@ -94,7 +90,7 @@ export const useUiStore = create<UiState>((set) => ({
       try {
         localStorage.setItem("ci-recent-repos", JSON.stringify(updated));
       } catch {
-        // ignore
+        
       }
       return { recentRepos: updated };
     }),

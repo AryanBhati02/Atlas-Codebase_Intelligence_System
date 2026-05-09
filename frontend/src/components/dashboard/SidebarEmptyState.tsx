@@ -13,7 +13,7 @@ export function SidebarEmptyState() {
                 setShowIngestModal(true);
             }
         } catch {
-            /* User cancelled the picker */
+            
         }
     };
 

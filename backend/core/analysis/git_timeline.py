@@ -1,13 +1,3 @@
-"""
-Git Timeline — extracts commit history and per-commit diffs.
-
-Provides:
-  1. Timeline: list of commits with hash, timestamp, author, message, changed files
-  2. Diff: per-commit changed files mapped to graph nodes
-  3. Coverage stub: parses coverage.json if present
-
-Results are cached in git_timeline.json per session.
-"""
 
 import json
 import logging
@@ -17,17 +7,10 @@ from datetime import datetime
 
 logger = logging.getLogger("codebase-intel.git")
 
-
 def extract_timeline(repo_dir: Path) -> list[dict]:
-    """Extract commit history from the git repo.
-    
-    Returns list of commits (newest first), each with:
-      hash, timestamp, author, message, files_changed (list of {path, status})
-    """
     if not (repo_dir / ".git").exists():
         return []
 
-    
     try:
         result = subprocess.run(
             [
@@ -56,7 +39,6 @@ def extract_timeline(repo_dir: Path) -> list[dict]:
         if not line:
             continue
 
-        
         if "|" in line and len(line.split("|")) >= 4:
             parts = line.split("|", 3)
             if len(parts[0]) == 40:  
@@ -72,7 +54,6 @@ def extract_timeline(repo_dir: Path) -> list[dict]:
                 }
                 continue
 
-        
         if current and "\t" in line:
             parts = line.split("\t", 1)
             if len(parts) == 2 and parts[0] in ("A", "M", "D", "R", "C"):
@@ -86,13 +67,7 @@ def extract_timeline(repo_dir: Path) -> list[dict]:
 
     return commits
 
-
 def get_commit_diff(repo_dir: Path, commit_hash: str) -> dict:
-    """Get detailed file changes for a specific commit.
-    
-    Returns:
-      hash, message, files: list of {path, status, additions, deletions}
-    """
     if not (repo_dir / ".git").exists():
         return {"hash": commit_hash, "files": []}
 
@@ -109,7 +84,6 @@ def get_commit_diff(repo_dir: Path, commit_hash: str) -> dict:
             author = parts[1] if len(parts) > 1 else ""
             timestamp = parts[2] if len(parts) > 2 else ""
 
-        
         stat_result = subprocess.run(
             ["git", "diff", "--numstat", f"{commit_hash}~1", commit_hash],
             capture_output=True, text=True, timeout=10, cwd=str(repo_dir),
@@ -131,7 +105,6 @@ def get_commit_diff(repo_dir: Path, commit_hash: str) -> dict:
                         "status": "M" if adds > 0 and dels > 0 else "A" if adds > 0 else "D",
                     })
 
-        
         if not files:
             ns_result = subprocess.run(
                 ["git", "diff", "--name-status", f"{commit_hash}~1", commit_hash],
@@ -161,15 +134,8 @@ def get_commit_diff(repo_dir: Path, commit_hash: str) -> dict:
     except Exception:
         return {"hash": commit_hash, "files": []}
 
-
 def parse_coverage(session_dir: Path) -> dict:
-    """Parse coverage data if available.
-    
-    Looks for coverage.json or .coverage in the repo.
-    Returns {file_path: coverage_percentage} mapping.
-    """
     coverage_map: dict[str, float] = {}
-    
     
     for candidate in ["coverage.json", "coverage-summary.json", ".coverage.json"]:
         coverage_path = session_dir / "repo" / candidate
@@ -190,7 +156,6 @@ def parse_coverage(session_dir: Path) -> dict:
                     coverage_map = {k: round(v, 1) for k, v in data.items()}
             except Exception:
                 pass
-    
     
     lcov_path = session_dir / "repo" / "coverage" / "lcov.info"
     if not coverage_map and lcov_path.exists():
@@ -230,9 +195,7 @@ def parse_coverage(session_dir: Path) -> dict:
         
     return result
 
-
 def get_cached_timeline(session_dir: Path) -> list[dict] | None:
-    """Load cached timeline if available."""
     cache_path = session_dir / "git_timeline.json"
     if cache_path.exists():
         try:
@@ -241,8 +204,6 @@ def get_cached_timeline(session_dir: Path) -> list[dict] | None:
             pass
     return None
 
-
 def cache_timeline(session_dir: Path, timeline: list[dict]) -> None:
-    """Cache timeline data to disk."""
     cache_path = session_dir / "git_timeline.json"
     cache_path.write_text(json.dumps(timeline, default=str), encoding="utf-8")

@@ -1,4 +1,3 @@
-"""Codebase Intelligence Tool — FastAPI Backend Entry Point."""
 
 import uvicorn
 from contextlib import asynccontextmanager
@@ -22,7 +21,6 @@ from api.routes.progress import router as progress_router
 
 logger = get_logger("atlas.main")
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Atlas starting up", extra={"version": "2.1.0"})
@@ -35,18 +33,12 @@ async def lifespan(app: FastAPI):
     await async_cleanup()
     logger.info("Atlas shutting down")
 
-
 app = FastAPI(
     title="Codebase Intelligence Tool",
     version="2.1.0",
     description="AI-powered developer intelligence platform",
     lifespan=lifespan,
 )
-
-
-# ---------------------------------------------------------------------------
-# Global exception handlers — NEVER return Python tracebacks to clients
-# ---------------------------------------------------------------------------
 
 @app.exception_handler(AtlasError)
 async def atlas_error_handler(request: Request, exc: AtlasError) -> JSONResponse:
@@ -55,7 +47,6 @@ async def atlas_error_handler(request: Request, exc: AtlasError) -> JSONResponse
         extra={"code": exc.code, "path": str(request.url.path)},
     )
     return JSONResponse(status_code=exc.status_code, content=exc.to_dict())
-
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -68,11 +59,6 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
         status_code=500,
         content={"error": "Internal server error", "code": "INTERNAL_ERROR"},
     )
-
-
-# ---------------------------------------------------------------------------
-# Middleware & routers
-# ---------------------------------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,11 +79,9 @@ app.include_router(git_router, prefix="/api")
 app.include_router(collab_router, prefix="/api")
 app.include_router(progress_router, prefix="/api")
 
-
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok", "version": "2.1.0"}
-
 
 if __name__ == "__main__":
     uvicorn.run(

@@ -37,7 +37,7 @@ interface SettingsStoreState {
   updateDraft: (partial: Partial<DraftState>) => void;
   applyDraft: () => Promise<boolean>;
   cancelDraft: () => void;
-  /** Called by the Axios 401 interceptor to invalidate cached settings. */
+  
   clearApiKeys: () => void;
 }
 
@@ -65,7 +65,7 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
       set({ settings: data });
       get().initDraft(data);
     } catch {
-      // silently ignore on initial load
+      
     }
   },
 
@@ -133,8 +133,7 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   },
 
   clearApiKeys: () => {
-    // The backend owns the actual keys; we just invalidate our cached settings
-    // so the settings panel re-fetches on next open.
+    
     set({ settings: null });
   },
 }));

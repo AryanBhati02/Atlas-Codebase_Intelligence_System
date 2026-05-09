@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -46,7 +41,6 @@ export function GitTimeline() {
   const [sliderValue, setSliderValue] = useState(0);
   const sliderRef = useRef<HTMLInputElement>(null);
 
-
   useEffect(() => {
     if (!sessionId || timelineData || isTimelineLoading) return;
     let cancelled = false;
@@ -61,7 +55,6 @@ export function GitTimeline() {
     })();
     return () => { cancelled = true; };
   }, [sessionId, timelineData, isTimelineLoading, setTimelineData, setTimelineLoading]);
-
 
   useEffect(() => {
     if (!sessionId || coverageData || isCoverageLoading) return;
@@ -78,7 +71,6 @@ export function GitTimeline() {
     return () => { cancelled = true; };
   }, [sessionId, coverageData, isCoverageLoading, setCoverageData, setCoverageLoading]);
 
-
   const handleSliderChange = useCallback(
     async (value: number) => {
       if (!sessionId || !timelineData || timelineData.commits.length === 0) return;
@@ -86,7 +78,6 @@ export function GitTimeline() {
       const commit = timelineData.commits[value];
       if (!commit) return;
       setSelectedCommit(commit);
-
 
       setCommitDiffLoading(true);
       try {
@@ -99,13 +90,11 @@ export function GitTimeline() {
     [sessionId, timelineData, setSelectedCommit, setCommitDiff, setCommitDiffLoading]
   );
 
-
   const handleClear = useCallback(() => {
     setSelectedCommit(null);
     setCommitDiff(null);
     setHighlightedFiles(new Set());
   }, [setSelectedCommit, setCommitDiff, setHighlightedFiles]);
-
 
   if (!sessionId) return null;
 
@@ -306,8 +295,6 @@ export function GitTimeline() {
     </motion.div>
   );
 }
-
-
 
 function FileStatusIcon({ status }: { status: string }) {
   switch (status) {

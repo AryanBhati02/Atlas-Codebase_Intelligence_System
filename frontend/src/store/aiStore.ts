@@ -10,30 +10,25 @@ import type {
 } from "../types";
 
 export interface AiState {
-  // File explanation (streamed in ExplainTab)
+  
   aiExplanation: string | null;
 
-  // Code selection analysis (streamed from CodePanel)
   aiAnalysis: string | null;
   aiSource: string | null;
   isAILoading: boolean;
   isAIStreaming: boolean;
 
-  // Active provider info
   currentProvider: AIProvider | null;
   streamingContent: string;
 
-  // Beginner guide
   beginnerGuide: string | null;
   beginnerTopFiles: { path: string; complexity_score: number }[];
   beginnerSource: string | null;
   isBeginnerLoading: boolean;
 
-  // Q&A chat history
   qaHistory: QAHistoryEntry[];
   isQALoading: boolean;
 
-  // Advanced AI features
   readmeData: ReadmeResponse | null;
   isReadmeLoading: boolean;
   refactorData: RefactorResponse | null;
@@ -43,7 +38,6 @@ export interface AiState {
   prReviewData: PRReviewResponse | null;
   isPRReviewLoading: boolean;
 
-  // Actions
   clearFileAI: () => void;
   setAIExplanation: (explanation: string | null, source?: string) => void;
   setAIAnalysis: (analysis: string | null, source?: string) => void;

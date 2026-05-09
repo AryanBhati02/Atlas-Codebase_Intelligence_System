@@ -1,21 +1,8 @@
-"""
-Dead Code Detector — cross-references exports vs imports to find unused symbols.
-
-Algorithm:
-  1. Build export index: {file_path → [exported symbols]}
-  2. Build import usage index: {symbol → [files that import it]}
-  3. Cross-reference: exported but never imported → DEAD
-
-Entry-point files (main.py, index.js, etc.) are never flagged dead.
-Results are cached per session in dead_code.json.
-"""
 
 import ast
 import re
 import json
 from pathlib import Path
-
-
 
 _ENTRY_PATTERNS = {
     "main.py", "app.py", "__main__.py", "__init__.py",
@@ -29,18 +16,11 @@ _ENTRY_PATTERNS = {
     "postcss.config.js", "tsconfig.json", "package.json",
 }
 
-
 def _is_entry_point(path: str) -> bool:
-    """Check if file is a known entry point that should never be flagged."""
     basename = Path(path).name
     return basename in _ENTRY_PATTERNS
 
-
-
-
-
 def _extract_python_exports(content: str) -> list[str]:
-    """Extract exported symbols from Python file using AST."""
     exports: list[str] = []
     try:
         tree = ast.parse(content)
@@ -55,7 +35,6 @@ def _extract_python_exports(content: str) -> list[str]:
                                     exports.append(elt.value)
                             return exports
 
-        
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if not node.name.startswith("_"):
@@ -71,7 +50,6 @@ def _extract_python_exports(content: str) -> list[str]:
         pass
     return exports
 
-
 _JS_EXPORT_PATTERNS = [
     
     re.compile(r'export\s+(?:default\s+)?(?:function|class|const|let|var)\s+(\w+)'),
@@ -84,9 +62,7 @@ _JS_EXPORT_PATTERNS = [
     re.compile(r'export\s+default\s+(\w+)'),
 ]
 
-
 def _extract_js_exports(content: str) -> list[str]:
-    """Extract exported symbols from JS/TS file using regex."""
     exports: list[str] = []
     for pattern in _JS_EXPORT_PATTERNS:
         for match in pattern.finditer(content):
@@ -101,12 +77,7 @@ def _extract_js_exports(content: str) -> list[str]:
                 exports.append(val)
     return list(set(exports))
 
-
-
-
-
 def _extract_python_imported_names(content: str) -> list[str]:
-    """Extract all imported names from Python file."""
     names: list[str] = []
     try:
         tree = ast.parse(content)
@@ -124,7 +95,6 @@ def _extract_python_imported_names(content: str) -> list[str]:
         pass
     return names
 
-
 _JS_IMPORT_NAME_PATTERNS = [
     
     re.compile(r'import\s*\{([^}]+)\}\s*from'),
@@ -136,9 +106,7 @@ _JS_IMPORT_NAME_PATTERNS = [
     re.compile(r'(?:const|let|var)\s+(\w+)\s*=\s*require'),
 ]
 
-
 def _extract_js_imported_names(content: str) -> list[str]:
-    """Extract all imported names from JS/TS file."""
     names: list[str] = []
     for pattern in _JS_IMPORT_NAME_PATTERNS:
         for match in pattern.finditer(content):
@@ -152,26 +120,10 @@ def _extract_js_imported_names(content: str) -> list[str]:
                 names.append(val)
     return names
 
-
-
-
-
 _PY_EXTS = {".py"}
 _JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 
-
 def analyze_dead_code(parsed_files: list[dict], repo_dir: Path) -> dict:
-    """
-    Analyze dead code across all files in a session.
-
-    Returns:
-      {
-        "dead_files": [{"path": str, "reason": str}],
-        "dead_functions": [{"path": str, "name": str, "reason": str}],
-        "dead_exports": [{"path": str, "symbol": str}],
-        "summary": {"total_files": int, "dead_files_count": int, ...}
-      }
-    """
     
     export_index: dict[str, list[str]] = {}
     
@@ -190,7 +142,6 @@ def analyze_dead_code(parsed_files: list[dict], repo_dir: Path) -> dict:
 
         ext = Path(f["path"]).suffix.lower()
 
-        
         if ext in _PY_EXTS:
             exports = _extract_python_exports(content)
             imported_names = _extract_python_imported_names(content)
@@ -206,16 +157,13 @@ def analyze_dead_code(parsed_files: list[dict], repo_dir: Path) -> dict:
 
         all_imported_names.update(imported_names)
 
-        
         for imp in f.get("imports", []):
             imported_modules.add(imp)
 
-    
     dead_files: list[dict] = []
     dead_functions: list[dict] = []
     dead_exports: list[dict] = []
 
-    
     from core.graph.graph_builder import _resolve_import, _build_basename_index
 
     all_paths = {f["path"] for f in parsed_files}
@@ -227,7 +175,6 @@ def analyze_dead_code(parsed_files: list[dict], repo_dir: Path) -> dict:
             if target:
                 imported_file_paths.add(target)
 
-    
     for f in parsed_files:
         path = f["path"]
         if _is_entry_point(path):
@@ -238,7 +185,6 @@ def analyze_dead_code(parsed_files: list[dict], repo_dir: Path) -> dict:
                 "reason": "Never imported by any other file in the project",
             })
 
-    
     dead_file_paths = {d["path"] for d in dead_files}
     for path, exports in export_index.items():
         if _is_entry_point(path):

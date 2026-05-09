@@ -1,8 +1,4 @@
 
-
-
-
-
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import {
@@ -16,7 +12,6 @@ import {
   HardDrive,
 } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
-
 
 const LANG_COLORS: Record<string, string> = {
   Python: "bg-blue-500/15 text-blue-300",
@@ -216,7 +211,6 @@ export function ResultsPanel() {
     </div>
   );
 }
-
 
 function StatCard({
   icon,

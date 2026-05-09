@@ -1,14 +1,3 @@
-/**
- * Backward-compatible combined store hook.
- *
- * Components that have not yet been migrated to the split stores can import
- * `useAppStore` from this file and get the same interface as before.
- * New code should import from the specific sub-stores directly.
- *
- * Performance note: this hook subscribes to ALL sub-stores, so any state
- * change in any store will trigger a re-render in components using it.
- * Migrate components to focused sub-store selectors to avoid this.
- */
 
 export { useSessionStore } from "./sessionStore";
 export { useGraphStore } from "./graphStore";
@@ -23,7 +12,6 @@ import { useGraphStore } from "./graphStore";
 import { useAiStore } from "./aiStore";
 import { useUiStore } from "./uiStore";
 
-/** Non-hook version for callbacks / event handlers outside React render. */
 export function getAppState() {
   return {
     ...useSessionStore.getState(),
@@ -43,7 +31,7 @@ export function useAppStore() {
   const ui = useUiStore();
 
   return {
-    // ---- session ----
+    
     sessionId: session.sessionId,
     status: session.status,
     progress: session.progress,
@@ -70,12 +58,11 @@ export function useAppStore() {
     setAnalysisProgress: session.setAnalysisProgress,
     setAnalysisResult: session.setAnalysisResult,
     setFileContent: session.setFileContent,
-    // Override setSelectedFile to also clear AI state
+    
     setSelectedFile: (path: string | null) => {
       session.setSelectedFile(path);
     },
 
-    // ---- graph ----
     deadCodeData: graph.deadCodeData,
     showDeadCode: graph.showDeadCode,
     isDeadCodeLoading: graph.isDeadCodeLoading,
@@ -108,7 +95,6 @@ export function useAppStore() {
     toggleCoverage: graph.toggleCoverage,
     setHighlightedFiles: graph.setHighlightedFiles,
 
-    // ---- ai ----
     aiExplanation: ai.aiExplanation,
     aiAnalysis: ai.aiAnalysis,
     aiSource: ai.aiSource,
@@ -148,7 +134,6 @@ export function useAppStore() {
     setPRReviewData: ai.setPRReviewData,
     setPRReviewLoading: ai.setPRReviewLoading,
 
-    // ---- ui ----
     isChatPanelOpen: ui.isChatPanelOpen,
     showIngestModal: ui.showIngestModal,
     settingsPanelOpen: ui.settingsPanelOpen,

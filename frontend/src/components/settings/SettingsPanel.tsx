@@ -790,7 +790,7 @@ export function SettingsPanel() {
               </div>
             </div>
 
-            {/* Apply / Cancel Footer */}
+            {}
             <div
               className="flex items-center gap-2 px-5 py-3 shrink-0"
               style={{

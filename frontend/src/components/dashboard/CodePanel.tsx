@@ -23,7 +23,6 @@ import { streamAI } from "../../api/aiStream";
 import { AIPanel } from "./AIPanel";
 import { CollaborationPanel } from "../collaboration/CollaborationPanel";
 
-// Derive the Monaco editor instance type without depending on the package internals
 type MonacoEditor = Parameters<OnMount>[0];
 
 function formatBytes(bytes: number): string {

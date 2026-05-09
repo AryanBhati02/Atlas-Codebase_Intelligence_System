@@ -18,11 +18,6 @@ interface WorkerResponse {
   error: string | null;
 }
 
-/**
- * Creates a long-lived Web Worker for dagre graph layout.
- * The worker is created once (on mount) and terminated on unmount.
- * computeLayout() is a stable reference safe to use as a useEffect dep.
- */
 export function useGraphLayout() {
   const [isComputing, setIsComputing] = useState(false);
   const workerRef = useRef<Worker | null>(null);
@@ -84,7 +79,6 @@ export function useGraphLayout() {
           return;
         }
 
-        // Cancel any in-flight request
         const existing = pendingRef.current;
         if (existing) {
           clearTimeout(existing.timer);
@@ -102,7 +96,6 @@ export function useGraphLayout() {
 
         pendingRef.current = { resolve, reject, timer };
 
-        // Strip non-transferable React internals before posting
         const serNodes = nodes.map(({ id, type, data }) => ({ id, type, data }));
         const serEdges = edges.map(({ id, source, target }) => ({ id, source, target }));
 

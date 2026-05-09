@@ -1,13 +1,3 @@
-"""
-AI Router — orchestrates prompt routing across providers with fallback chain
-and per-provider exponential-backoff retry logic.
-
-Priority chain: Cache → Ollama (local) → Groq → Gemini → Mistral → HuggingFace
-Retry policy:
-  - RateLimitError: wait 2^attempt seconds, retry up to 2 times, then mark exhausted
-  - ProviderError / any other: skip to next provider immediately
-  - All providers fail: raise ProviderUnavailableError
-"""
 
 import asyncio
 import json
@@ -39,28 +29,20 @@ from core.ai.free_api import (
 
 logger = get_logger("atlas.ai.router")
 
-
-# ---------------------------------------------------------------------------
-# Ollama config
-# ---------------------------------------------------------------------------
-
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 _ollama_model = "phi3:mini"
 OLLAMA_MODEL = _ollama_model
 OLLAMA_TIMEOUT = 60.0
 
-_MAX_RATE_LIMIT_RETRIES = 2  # retry up to 2 times before marking exhausted
-
+_MAX_RATE_LIMIT_RETRIES = 2                                                
 
 def get_ollama_model() -> str:
     return _ollama_model
-
 
 def set_ollama_model(model: str) -> None:
     global _ollama_model, OLLAMA_MODEL
     _ollama_model = model
     OLLAMA_MODEL = model
-
 
 PROVIDER_CHAIN: list[str] = ["ollama", "groq", "gemini", "mistral", "huggingface"]
 
@@ -69,11 +51,6 @@ _prefer_local: bool = True
 _STATS_DB_PATH = Path(__file__).resolve().parent.parent.parent / "ai_stats.db"
 
 _stats_lock = threading.Lock()
-
-
-# ---------------------------------------------------------------------------
-# Stats DB
-# ---------------------------------------------------------------------------
 
 def _get_stats_db() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_STATS_DB_PATH))
@@ -90,7 +67,6 @@ def _get_stats_db() -> sqlite3.Connection:
     conn.commit()
     return conn
 
-
 def _log_stat(provider: str, latency_ms: float, success: bool) -> None:
     try:
         with _stats_lock:
@@ -104,9 +80,8 @@ def _log_stat(provider: str, latency_ms: float, success: bool) -> None:
     except Exception as e:
         logger.debug("Stats logging failed", extra={"provider": provider, "error": str(e)})
 
-
-def get_provider_stats() -> dict[str, dict]:  # type: ignore[type-arg]
-    result: dict[str, dict] = {}  # type: ignore[type-arg]
+def get_provider_stats() -> dict[str, dict]:                          
+    result: dict[str, dict] = {}                          
     try:
         conn = _get_stats_db()
         rows = conn.execute("""
@@ -132,7 +107,6 @@ def get_provider_stats() -> dict[str, dict]:  # type: ignore[type-arg]
             result[p] = {"requests_today": 0, "successes": 0, "avg_latency_ms": 0}
     return result
 
-
 def clear_stats() -> None:
     try:
         conn = _get_stats_db()
@@ -142,19 +116,12 @@ def clear_stats() -> None:
     except Exception as e:
         logger.warning("Failed to clear stats", extra={"error": str(e)})
 
-
-# ---------------------------------------------------------------------------
-# Provider ordering
-# ---------------------------------------------------------------------------
-
 def set_prefer_local(prefer: bool) -> None:
     global _prefer_local
     _prefer_local = prefer
 
-
 def get_prefer_local() -> bool:
     return _prefer_local
-
 
 def get_ordered_providers() -> list[str]:
     if _prefer_local:
@@ -162,7 +129,6 @@ def get_ordered_providers() -> list[str]:
     chain = [p for p in PROVIDER_CHAIN if p != "ollama"]
     chain.append("ollama")
     return chain
-
 
 def _is_provider_available(provider: str) -> bool:
     if provider == "ollama":
@@ -172,11 +138,6 @@ def _is_provider_available(provider: str) -> bool:
     if not has_key(provider):
         return False
     return True
-
-
-# ---------------------------------------------------------------------------
-# Blocking callers
-# ---------------------------------------------------------------------------
 
 async def _call_ollama(prompt: str) -> str:
     model = get_ollama_model()
@@ -193,7 +154,6 @@ async def _call_ollama(prompt: str) -> str:
             raise ProviderError("Ollama returned empty response")
         raise ProviderError(f"Ollama returned {resp.status_code}")
 
-
 _CALLERS = {
     "ollama": _call_ollama,
     "groq": call_groq,
@@ -202,20 +162,14 @@ _CALLERS = {
     "huggingface": call_huggingface,
 }
 
-
 async def _call_with_retry(provider: str, prompt: str) -> str:
-    """
-    Call a provider with exponential backoff on RateLimitError.
-    Raises ProviderUnavailableError if all retries are exhausted.
-    Raises ProviderError immediately for non-rate-limit failures.
-    """
     caller = _CALLERS.get(provider)
     if not caller:
         raise ProviderError(f"No caller registered for {provider}")
 
     last_exc: Exception = ProviderError(f"{provider} failed before first attempt")
 
-    for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):  # 0, 1, 2
+    for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):           
         start = time.time()
         try:
             result = await caller(prompt)
@@ -229,7 +183,7 @@ async def _call_with_retry(provider: str, prompt: str) -> str:
             _log_stat(provider, (time.time() - start) * 1000, success=False)
             last_exc = exc
             if attempt < _MAX_RATE_LIMIT_RETRIES:
-                wait_secs = 2 ** attempt  # 1s, 2s
+                wait_secs = 2 ** attempt          
                 logger.warning(
                     "Rate limit hit — retrying",
                     extra={"provider": provider, "attempt": attempt + 1, "wait_secs": wait_secs},
@@ -251,16 +205,9 @@ async def _call_with_retry(provider: str, prompt: str) -> str:
             logger.warning("Unexpected provider error", extra={"provider": provider, "error": str(exc)})
             raise ProviderError(str(exc)) from exc
 
-    # Unreachable but satisfies type checker
     raise ProviderUnavailableError(f"{provider} failed all attempts") from last_exc
 
-
 async def route_prompt(prompt: str) -> tuple[Optional[str], str]:
-    """
-    Route a prompt through the provider chain with automatic fallback.
-    Raises ProviderUnavailableError if all providers fail.
-    Returns (response_text, provider_name).
-    """
     chain = get_ordered_providers()
     errors: list[str] = []
 
@@ -285,13 +232,7 @@ async def route_prompt(prompt: str) -> tuple[Optional[str], str]:
         f"All providers failed: {'; '.join(errors)}"
     )
 
-
-# ---------------------------------------------------------------------------
-# Streaming generators — one per provider
-# ---------------------------------------------------------------------------
-
 async def _stream_ollama(prompt: str) -> AsyncGenerator[str, None]:
-    """Stream tokens from local Ollama via NDJSON."""
     model = get_ollama_model()
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
         async with client.stream(
@@ -313,9 +254,7 @@ async def _stream_ollama(prompt: str) -> AsyncGenerator[str, None]:
                 except json.JSONDecodeError:
                     continue
 
-
 async def _stream_groq(prompt: str) -> AsyncGenerator[str, None]:
-    """Stream tokens from Groq via OpenAI-compatible SSE."""
     key = get_key("groq")
     if not key:
         raise ProviderError("Groq API key not configured")
@@ -354,9 +293,7 @@ async def _stream_groq(prompt: str) -> AsyncGenerator[str, None]:
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
 
-
 async def _stream_gemini(prompt: str) -> AsyncGenerator[str, None]:
-    """Stream tokens from Gemini via SSE (alt=sse parameter)."""
     key = get_key("gemini")
     if not key:
         raise ProviderError("Gemini API key not configured")
@@ -392,9 +329,7 @@ async def _stream_gemini(prompt: str) -> AsyncGenerator[str, None]:
                 except (json.JSONDecodeError, IndexError, KeyError):
                     continue
 
-
 async def _stream_mistral(prompt: str) -> AsyncGenerator[str, None]:
-    """Stream tokens from Mistral via OpenAI-compatible SSE."""
     key = get_key("mistral")
     if not key:
         raise ProviderError("Mistral API key not configured")
@@ -432,13 +367,10 @@ async def _stream_mistral(prompt: str) -> AsyncGenerator[str, None]:
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
 
-
 async def _stream_huggingface(prompt: str) -> AsyncGenerator[str, None]:
-    """HuggingFace inference API — collect full response, yield as single chunk."""
     result = await call_huggingface(prompt)
     if result:
         yield result
-
 
 _STREAM_CALLERS: dict[str, object] = {
     "ollama": _stream_ollama,
@@ -448,20 +380,7 @@ _STREAM_CALLERS: dict[str, object] = {
     "huggingface": _stream_huggingface,
 }
 
-
-# ---------------------------------------------------------------------------
-# Unified streaming router
-# ---------------------------------------------------------------------------
-
 async def route_stream(prompt: str) -> AsyncGenerator[str, None]:
-    """
-    Route a prompt and stream tokens as they arrive.
-
-    Tries providers in priority order.  Falls back to the next provider if
-    the current one raises before yielding any tokens.  Once tokens have
-    started flowing, errors end the stream silently.
-    Yields a fallback message if every provider fails.
-    """
     chain = get_ordered_providers()
 
     for provider in chain:
@@ -477,7 +396,7 @@ async def route_stream(prompt: str) -> AsyncGenerator[str, None]:
         chunks_sent = 0
 
         try:
-            async for chunk in streamer(prompt):  # type: ignore[union-attr]
+            async for chunk in streamer(prompt):                            
                 yield chunk
                 chunks_sent += 1
 
@@ -508,11 +427,5 @@ async def route_stream(prompt: str) -> AsyncGenerator[str, None]:
         "(Groq, Gemini, Mistral, or HuggingFace) or start Ollama locally.*"
     )
 
-
-# ---------------------------------------------------------------------------
-# Key reload
-# ---------------------------------------------------------------------------
-
 def reload_keys() -> None:
-    """Hot-reload API keys from .env (delegates to free_api module)."""
     _reload_provider_keys()

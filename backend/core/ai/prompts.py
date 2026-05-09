@@ -1,22 +1,7 @@
-"""
-Prompt builders for file-aware, context-specific AI analysis.
-
-Each builder produces a prompt that includes actual file content and repository
-context so the AI response is specific to THIS codebase — never generic advice.
-"""
 
 from pathlib import Path
 
-
 def build_explain_prompt(file_data: dict) -> str:
-    """
-    Build an explanation prompt with actual file content and graph context.
-
-    Expected keys in file_data:
-      repo_name, file_path, language, loc, complexity_score, nesting_depth,
-      functions (list[str]), classes (list[str]), imports (list[str]),
-      imported_by (list[str]), content (str, first 2000 chars)
-    """
     repo = file_data.get("repo_name", "this project")
     path = file_data.get("file_path", "unknown")
     lang = file_data.get("language", "Unknown")
@@ -68,14 +53,7 @@ def build_explain_prompt(file_data: dict) -> str:
         f"Use markdown with headers and inline `code`. Be concise but complete."
     )
 
-
 def build_security_prompt(file_data: dict, findings: list[dict]) -> str:
-    """
-    Build a security analysis prompt that includes the actual vulnerable code lines.
-
-    file_data: parsed file info with 'content' key (full file text)
-    findings:  list of {file, line, title, detail, fix, severity}
-    """
     path = file_data.get("file_path", "unknown")
     lang = file_data.get("language", "Unknown")
     content_lines = file_data.get("content", "").split("\n")
@@ -129,15 +107,7 @@ def build_security_prompt(file_data: dict, findings: list[dict]) -> str:
         f"Format each finding as a `## [SEVERITY] Title` section."
     )
 
-
 def build_refactor_prompt(selected_code: str, file_context: dict) -> str:
-    """
-    Build a refactor prompt with the exact selected code and 10 lines of surrounding context.
-
-    file_context keys:
-      file_path, language, imports (list[str]), complexity_score,
-      content_before (str, 10 lines before), content_after (str, 10 lines after)
-    """
     path = file_context.get("file_path", "unknown")
     lang = file_context.get("language", "Unknown")
     imports = file_context.get("imports", [])[:10]
@@ -171,16 +141,7 @@ def build_refactor_prompt(selected_code: str, file_context: dict) -> str:
         f"List specific tests or assertions needed to verify correctness after applying this diff."
     )
 
-
 def build_onboarding_prompt(repo_summary: dict) -> str:
-    """
-    Build a new-developer onboarding guide prompt with the full file tree and hub files.
-
-    repo_summary keys:
-      repo_name, file_tree (list[str]), top_imported (list[{path, count}]),
-      entry_points (list[str]), total_files, total_loc, languages (dict),
-      parsed_files (list[{path, language, loc, functions, classes, complexity_score}])
-    """
     name = repo_summary.get("repo_name", "this project")
     file_tree = repo_summary.get("file_tree", [])
     top_imported = repo_summary.get("top_imported", [])
@@ -244,14 +205,7 @@ def build_onboarding_prompt(repo_summary: dict) -> str:
         f"Do NOT give generic programming advice. Use exact file paths throughout."
     )
 
-
 def build_qa_prompt(question: str, context: list[dict], history: list[dict]) -> str:
-    """
-    Build a Q&A prompt with relevant file excerpts and the last 5 conversation turns.
-
-    context items:  {path, language, loc, content (excerpt), functions, classes, relevance_reason}
-    history items:  {question, answer}
-    """
     file_blocks: list[str] = []
     for item in context[:5]:
         path = item.get("path", "")

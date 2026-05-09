@@ -8,35 +8,30 @@ import type {
 } from "../types";
 
 export interface SessionState {
-  // Identity
+  
   sessionId: string | null;
   status: SessionStatus;
   progress: number;
   repoUrl: string | null;
   repoName: string | null;
 
-  // Ingested data
   files: FileEntry[];
   totalFiles: number;
   sourceType: string | null;
   ingestedAt: string | null;
 
-  // Analysis results
   isAnalyzed: boolean;
   parsedFiles: ParsedFile[];
   graphData: GraphData | null;
 
-  // File viewer
   selectedFile: string | null;
   fileContent: FileContentResponse | null;
 
-  // Async state
   isLoading: boolean;
   isAnalyzing: boolean;
   analysisProgress: { stage: string; current: number; total: number } | null;
   error: string | null;
 
-  // Actions
   setSession: (data: {
     session_id: string;
     repo_name: string;
@@ -125,7 +120,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setSelectedFile: (path) => {
     set({ selectedFile: path, fileContent: null });
-    // Clear AI state for the previous file — import lazily to avoid circular dep
+    
     import("./aiStore").then(({ useAiStore }) => {
       useAiStore.getState().clearFileAI();
     }).catch(() => undefined);

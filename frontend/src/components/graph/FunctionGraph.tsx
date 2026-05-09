@@ -1,11 +1,4 @@
 
-
-
-
-
-
-
-
 import { useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactFlow, {
@@ -25,8 +18,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
-
-
 
 function FunctionNodeComponent({
   data,
@@ -87,8 +78,6 @@ function FunctionNodeComponent({
 
 const nodeTypes = { functionNode: FunctionNodeComponent };
 
-
-
 export function FunctionGraph() {
   const {
     functionGraphData,
@@ -99,7 +88,6 @@ export function FunctionGraph() {
     deadCodeData,
     showDeadCode,
   } = useAppStore();
-
 
   const deadFunctionNames = useMemo(() => {
     if (!showDeadCode || !deadCodeData || !functionGraphFile) return new Set<string>();
@@ -162,7 +150,6 @@ export function FunctionGraph() {
   const handleClose = useCallback(() => {
     setFunctionGraphData(null, null);
   }, [setFunctionGraphData]);
-
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {

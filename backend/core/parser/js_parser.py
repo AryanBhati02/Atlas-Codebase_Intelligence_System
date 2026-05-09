@@ -1,4 +1,3 @@
-"""JS/TS parser using regex patterns. Extracts imports, functions, classes, LOC, nesting."""
 
 import re
 
@@ -16,7 +15,6 @@ _FUNC_PATTERNS = [
 ]
 
 _CLASS_PATTERN = re.compile(r'''class\s+(\w+)''')
-
 
 def _calc_nesting(content: str) -> int:
     max_depth = 0
@@ -48,7 +46,6 @@ def _calc_nesting(content: str) -> int:
             depth = max(0, depth - 1)
         i += 1
     return max_depth
-
 
 def parse_js(content: str, file_path: str) -> dict:
     imports: list[str] = []

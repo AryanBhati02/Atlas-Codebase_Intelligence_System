@@ -1,16 +1,7 @@
-"""AI client — routes prompts through provider chain with template fallback.
-
-Supports: file explanation, code analysis, beginner guide, Q&A.
-All responses integrate with SQLite cache for instant repeat lookups.
-Uses the AI router for multi-provider fallback: Ollama → Groq → Gemini → Mistral → HuggingFace.
-"""
 
 from pathlib import Path
 
 from core.ai.router import route_prompt
-
-
-
 
 def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
     lang = parsed.get("language", "Unknown")
@@ -29,7 +20,6 @@ def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
     sections.append(f"**Complexity Score:** {score:.0%}  ")
     sections.append(f"**Max Nesting Depth:** {nesting}\n")
 
-    
     sections.append("### 🎯 Purpose & Responsibility\n")
     basename = Path(file_path).stem.lower()
     if "test" in basename:
@@ -53,7 +43,6 @@ def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
     else:
         sections.append(f"This {lang} module provides core functionality for the project. It encapsulates domain-specific logic that other modules depend on.\n")
 
-    
     if classes or funcs:
         sections.append("### 🏗️ Key Components\n")
         if classes:
@@ -67,7 +56,6 @@ def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
                 sections.append(f"- `{fn}()` — handles specific processing logic")
             sections.append("")
 
-    
     if imports:
         sections.append("### 📦 Dependencies & Imports\n")
         internal = [i for i in imports if not i.startswith(("os", "sys", "re", "json", "typing", "pathlib", "datetime", "collections", "abc", "functools", "itertools", "math", "hashlib", "uuid"))]
@@ -80,7 +68,6 @@ def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
             sections.append(f"**Standard library:** {', '.join(f'`{i}`' for i in stdlib[:10])}")
             sections.append("These are Python/language standard library modules.\n")
 
-    
     lines = content.split("\n")[:120]
     code_preview = "\n".join(lines)
     has_class = len(classes) > 0
@@ -119,7 +106,6 @@ def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
     sections.extend(notes)
     sections.append("")
 
-    
     sections.append("### 🔀 Data Flow\n")
     if has_class and funcs:
         sections.append(f"Data flows through the **{len(classes)} class(es)** via **{len(funcs)} function(s)**. ")
@@ -130,7 +116,6 @@ def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
     else:
         sections.append("This file primarily consists of top-level declarations and configurations.\n")
 
-    
     sections.append("### 📊 Complexity Assessment\n")
     if score > 0.7:
         sections.append("⚠️ **High complexity** — this file has significant structural depth and size.\n")
@@ -150,7 +135,6 @@ def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
         sections.append("This file is easy to understand and maintain.")
 
     return "\n".join(sections)
-
 
 async def explain_file(file_path: str, content: str, parsed: dict) -> dict:
     lang = parsed.get("language", "Unknown")
@@ -201,9 +185,6 @@ async def explain_file(file_path: str, content: str, parsed: dict) -> dict:
         return {"explanation": result, "source": source}
     return {"explanation": _fallback_explain(file_path, content, parsed), "source": "fallback"}
 
-
-
-
 def _fallback_analyze(code: str, file_path: str) -> str:
     lines = code.strip().split("\n")
     line_count = len(lines)
@@ -213,7 +194,6 @@ def _fallback_analyze(code: str, file_path: str) -> str:
     sections.append(f"**File:** `{file_path}`  ")
     sections.append(f"**Lines analyzed:** {line_count}\n")
 
-    
     ext = Path(file_path).suffix.lstrip(".")
     lang_map = {
         "py": "python", "js": "javascript", "ts": "typescript",
@@ -225,7 +205,6 @@ def _fallback_analyze(code: str, file_path: str) -> str:
     sections.append(code[:1200])
     sections.append("```\n")
 
-    
     sections.append("### 📋 Code Purpose & Logic\n")
 
     has_loop = any(kw in code for kw in ["for ", "while ", ".forEach", ".map(", ".filter(", ".reduce("])
@@ -255,7 +234,6 @@ def _fallback_analyze(code: str, file_path: str) -> str:
 
     sections.append(f"This code block implements **{', '.join(desc_parts)}**.\n")
 
-    
     if has_function_def:
         func_lines = [l.strip() for l in lines if l.strip().startswith(("def ", "function ", "async def ", "async function "))]
         if func_lines:
@@ -265,7 +243,6 @@ def _fallback_analyze(code: str, file_path: str) -> str:
                 sections.append(f"- `{name}` — processes data and returns results")
             sections.append("")
 
-    
     sections.append("### ⚠️ Issues & Risk Assessment\n")
     issues = []
 
@@ -319,7 +296,6 @@ def _fallback_analyze(code: str, file_path: str) -> str:
     sections.extend(issues)
     sections.append("")
 
-    
     sections.append("### 💡 Improvement Suggestions\n")
     improvements = []
     if not has_error:
@@ -338,12 +314,10 @@ def _fallback_analyze(code: str, file_path: str) -> str:
     sections.extend(improvements[:6])
     sections.append("")
 
-    
     sections.append("### 🔧 Refactored Version\n")
     sections.append("*Connect an AI provider (Ollama, Groq, Gemini, etc.) for an AI-generated refactored version of this code with concrete improvements applied.*\n")
 
     return "\n".join(sections)
-
 
 async def analyze_code(code: str, file_path: str) -> dict:
     lang = Path(file_path).suffix.lstrip(".")
@@ -381,17 +355,11 @@ async def analyze_code(code: str, file_path: str) -> dict:
         return {"analysis": result, "source": source}
     return {"analysis": _fallback_analyze(code, file_path), "source": "fallback"}
 
-
-
-
 def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Path) -> dict:
-    """Generate a structured beginner-friendly onboarding guide."""
 
-    
     sorted_files = sorted(parsed_files, key=lambda f: f.get("complexity_score", 0), reverse=True)
     top_files = sorted_files[:5]
 
-    
     entry_points = []
     for f in parsed_files:
         name = Path(f["path"]).stem.lower()
@@ -400,14 +368,12 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
     if not entry_points:
         entry_points = [parsed_files[0]["path"]] if parsed_files else []
 
-    
     lang_counts: dict[str, int] = {}
     for f in parsed_files:
         lang = f.get("language") or "Other"
         lang_counts[lang] = lang_counts.get(lang, 0) + 1
     primary_lang = max(lang_counts, key=lang_counts.get) if lang_counts else "Unknown"
 
-    
     dirs: set[str] = set()
     dir_file_counts: dict[str, int] = {}
     for f in parsed_files:
@@ -416,7 +382,6 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
             dirs.add(parts[0])
             dir_file_counts[parts[0]] = dir_file_counts.get(parts[0], 0) + 1
 
-    
     sections = []
     sections.append(f"# 🚀 Beginner's Guide to `{repo_name}`\n")
     sections.append("*Your complete onboarding guide to understanding this codebase*\n")
@@ -442,7 +407,6 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
     sections.append(f"| Primary Language | {primary_lang} |")
     sections.append("")
 
-    
     sections.append("## 🚪 Entry Points — Where to Start\n")
     sections.append("These are the files that boot up the application. Start here to understand the high-level flow:\n")
     for i, ep in enumerate(entry_points[:3], 1):
@@ -455,7 +419,6 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
             sections.append(f"{i}. **`{ep}`**")
     sections.append("")
 
-    
     sections.append("## 🗂️ Project Structure\n")
     sections.append("Here's what each directory contains and its role:\n")
     dir_map: dict[str, list[dict]] = {}
@@ -491,7 +454,6 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
         sections.append(f"- **`{folder}/`** — {purpose} ({len(files)} files, {total_dir_loc:,} LOC)")
     sections.append("")
 
-    
     sections.append("## 🔑 Key Files to Understand\n")
     sections.append("These are the most critical files based on complexity, connectivity, and importance:\n")
     for i, f in enumerate(top_files, 1):
@@ -510,7 +472,6 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
             sections.append(f"**Functions:** {', '.join(f'`{fn}()`' for fn in funcs[:6])}")
         sections.append("")
 
-    
     sections.append("## 📖 Recommended Reading Order\n")
     sections.append("Follow this path to understand the codebase efficiently:\n")
     reading_order = []
@@ -543,7 +504,6 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
         sections.append(f"**Step {i}.** `{path}`")
         sections.append(f"   _{label}_\n")
 
-    
     sections.append("## 🧩 Architecture Patterns\n")
     patterns = []
     has_models = any("model" in f["path"].lower() or "schema" in f["path"].lower() for f in parsed_files)
@@ -565,7 +525,6 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
     sections.extend(patterns)
     sections.append("")
 
-    
     sections.append("## 💡 Tips for New Contributors\n")
     sections.append("1. **Start with entry points** — Trace the execution flow from `main`/`app`/`index`")
     sections.append("2. **Read config first** — Understanding settings reveals how the app is configured")
@@ -580,18 +539,14 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
 
     return {"guide": guide, "top_files": top_file_list, "source": "fallback"}
 
-
 async def beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Path) -> dict:
-    """Generate beginner onboarding guide."""
 
-    
     file_summary = "\n".join(
         f"- {f['path']} (lang={f.get('language')}, loc={f.get('loc', 0)}, complexity={f.get('complexity_score', 0):.0%}, "
         f"functions=[{', '.join(f.get('functions', [])[:5])}], classes=[{', '.join(f.get('classes', [])[:3])}])"
         for f in sorted(parsed_files, key=lambda x: -x.get("complexity_score", 0))[:25]
     )
 
-    
     dir_summary = {}
     for f in parsed_files:
         parts = f["path"].split("/")
@@ -635,15 +590,10 @@ async def beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pat
 
     return _build_beginner_guide(repo_name, parsed_files, repo_dir)
 
-
-
-
 def _find_relevant_files(question: str, parsed_files: list[dict], repo_dir: Path) -> list[dict]:
-    """Find top 5 most relevant files for the question using keyword matching."""
     q_lower = question.lower()
     q_words = set(q_lower.replace("?", "").replace(",", "").replace(".", "").replace("'", "").split())
 
-    
     stop = {"the", "a", "an", "is", "are", "was", "were", "in", "on", "at", "to", "for",
             "of", "and", "or", "but", "not", "with", "this", "that", "it", "how", "what",
             "where", "when", "why", "which", "who", "does", "do", "did", "can", "could",
@@ -657,19 +607,16 @@ def _find_relevant_files(question: str, parsed_files: list[dict], repo_dir: Path
         path_lower = f["path"].lower()
         stem = Path(f["path"]).stem.lower()
 
-        
         for word in q_words:
             if word in stem:
                 score += 5.0
             elif word in path_lower:
                 score += 3.0
 
-        
         lang = (f.get("language") or "").lower()
         if lang and lang in q_lower:
             score += 2.0
 
-        
         for fn in f.get("functions", []):
             fn_lower = fn.lower()
             if fn_lower in q_lower:
@@ -683,25 +630,20 @@ def _find_relevant_files(question: str, parsed_files: list[dict], repo_dir: Path
             elif any(w in cls_lower for w in q_words):
                 score += 4.0
 
-        
         for imp in f.get("imports", []):
             if any(w in imp.lower() for w in q_words):
                 score += 2.0
 
-        
         score += f.get("complexity_score", 0) * 0.5
         score += min(f.get("loc", 0) / 500, 1.0) * 0.5
 
         if score > 0:
             scored.append((f, score))
 
-    
     scored.sort(key=lambda x: -x[1])
     return [item[0] for item in scored[:8]]
 
-
 def _build_qa_answer(question: str, relevant_files: list[dict], repo_dir: Path) -> dict:
-    """Build a structured answer from relevant files."""
     if not relevant_files:
         return {
             "answer": "I couldn't find files directly related to your question. Try:\n\n"
@@ -716,7 +658,6 @@ def _build_qa_answer(question: str, relevant_files: list[dict], repo_dir: Path) 
     sections = []
     sections.append(f"## 💬 Answer\n")
 
-    
     q_lower = question.lower()
 
     if any(w in q_lower for w in ["how", "work", "flow", "process", "implement"]):
@@ -742,7 +683,6 @@ def _build_qa_answer(question: str, relevant_files: list[dict], repo_dir: Path) 
         sections.append(f"### {i}. `{path}`\n")
         sections.append(f"**Language:** {lang} · **LOC:** {loc} · **Complexity:** {score:.0%}\n")
 
-        
         try:
             full_path = repo_dir / path
             if full_path.exists():
@@ -792,12 +732,9 @@ def _build_qa_answer(question: str, relevant_files: list[dict], repo_dir: Path) 
         "source": "fallback",
     }
 
-
 async def answer_question(question: str, parsed_files: list[dict], repo_dir: Path) -> dict:
-    """Answer a question about the codebase with file references."""
     relevant = _find_relevant_files(question, parsed_files, repo_dir)
 
-    
     if relevant:
         context_parts = []
         for f in relevant[:5]:

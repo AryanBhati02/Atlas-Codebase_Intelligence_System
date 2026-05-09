@@ -1,7 +1,4 @@
 
-
-
-
 import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { UploadCloud, FileArchive, Loader2, AlertCircle, X } from "lucide-react";

@@ -20,7 +20,8 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "allowJs": false
+    "allowJs": false,
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }

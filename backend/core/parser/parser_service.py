@@ -1,16 +1,3 @@
-"""
-Parser orchestrator — sync and async interfaces for file parsing.
-
-parse_all_files_async  (primary)
-    Async, bounded by asyncio.Semaphore(10).
-    Each file is parsed in a thread via asyncio.to_thread() so CPU-bound
-    ast.parse() and regex work never blocks the event loop.
-    Call via asyncio.run() from Celery tasks or threading fallback.
-
-parse_all_files  (backward compat)
-    Sync, batched ThreadPoolExecutor.
-    Kept for tests and any call sites that haven't migrated yet.
-"""
 
 import asyncio
 import logging
@@ -28,23 +15,16 @@ _PYTHON_EXTS = {".py"}
 _JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"}
 _MAX_WORKERS = min(16, max(4, (os.cpu_count() or 4) * 2))
 
-# Secondary filter: catch artifact files that slipped through file_filter.
-# file_filter already blocks most of these via IGNORED_DIRS / IGNORED_EXTENSIONS,
-# but a shallow clone may include generated files in unexpected locations.
 _SKIP_DIRS = frozenset({"node_modules", "__pycache__", "dist", "build", ".git"})
 _SKIP_NAME_SUFFIXES = (".min.js", ".min.css", ".bundle.js", ".chunk.js")
 
-
-# ── Helper ────────────────────────────────────────────────────────────────────
-
 def parse_file(content: str, file_path: str, extension: str) -> dict:
-    """Route file content to the correct language parser."""
     ext = extension.lower()
     if ext in _PYTHON_EXTS:
         return parse_python(content, file_path)
     if ext in _JS_EXTS:
         return parse_js(content, file_path)
-    # Generic fallback: count non-blank lines, no AST extraction.
+                                                                 
     loc = sum(1 for line in content.split("\n") if line.strip())
     return {
         "path": file_path,
@@ -55,25 +35,17 @@ def parse_file(content: str, file_path: str, extension: str) -> dict:
         "nesting_depth": 0,
     }
 
-
 def _should_skip(entry: dict) -> bool:
-    """Return True for files that should not be parsed (secondary filter)."""
     path: str = entry.get("path", "").replace("\\", "/")
     parts = path.split("/")
-    # Skip files nested inside artifact directories
+                                                   
     if any(part in _SKIP_DIRS for part in parts[:-1]):
         return True
-    # Skip files with known minified/generated name suffixes
+                                                            
     name = parts[-1] if parts else ""
     return any(name.endswith(suf) for suf in _SKIP_NAME_SUFFIXES)
 
-
 def _parse_single_entry(repo_dir_str: str, entry: dict) -> dict | None:
-    """
-    Read + parse one file. Runs in a thread pool thread.
-    Returns None if the file should be skipped or cannot be read/parsed.
-    No shared mutable state — safe for concurrent use.
-    """
     if _should_skip(entry):
         return None
 
@@ -89,7 +61,7 @@ def _parse_single_entry(repo_dir_str: str, entry: dict) -> dict | None:
 
     try:
         result = parse_file(content, entry["path"], entry.get("extension", ""))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:                
         logger.debug(f"Parse error for {entry['path']}: {exc}")
         return None
 
@@ -97,30 +69,11 @@ def _parse_single_entry(repo_dir_str: str, entry: dict) -> dict | None:
     result["language"] = entry.get("language")
     return result
 
-
-# ── Async interface (primary) ─────────────────────────────────────────────────
-
 async def parse_all_files_async(
     repo_dir: Path,
     file_entries: list[dict],
     progress_callback=None,
 ) -> list[dict]:
-    """
-    Parse all files with bounded async concurrency.
-
-    asyncio.Semaphore(10) caps the number of simultaneous asyncio.to_thread()
-    calls, preventing thread-pool and memory explosion on large repos.
-
-    progress_callback(current: int, total: int) is called after each file
-    completes (from within the event loop, so it must be non-blocking).
-
-    Usage:
-        # From a Celery task or daemon thread:
-        parsed = asyncio.run(parse_all_files_async(repo_dir, entries))
-
-        # From an async function:
-        parsed = await parse_all_files_async(repo_dir, entries)
-    """
     if not file_entries:
         return []
 
@@ -136,12 +89,11 @@ async def parse_all_files_async(
     async def _parse_one(entry: dict) -> dict | None:
         nonlocal parsed_count
         async with sem:
-            # Run blocking read + AST parse in a thread so the event loop
-            # is never blocked, even on files that take tens of milliseconds.
+                                                                         
             result = await asyncio.to_thread(_parse_single_entry, repo_dir_str, entry)
             async with count_lock:
                 parsed_count += 1
-                count = parsed_count  # capture for callback
+                count = parsed_count                        
             if progress_callback and (count % 10 == 0 or count == total):
                 progress_callback(count, total)
             return result
@@ -158,22 +110,11 @@ async def parse_all_files_async(
     logger.info(f"Async parse done: {len(results)}/{total} files parsed successfully")
     return results
 
-
-# ── Sync interface (backward compat) ─────────────────────────────────────────
-
 def parse_all_files(
     repo_dir: Path,
     file_entries: list[dict],
     progress_callback=None,
 ) -> list[dict]:
-    """
-    Sync batched parser using ThreadPoolExecutor.
-
-    Processes PARSE_BATCH_SIZE files per batch so that at most ~batch_size
-    futures exist in memory at once (prevents OOM on 100 K-file repos).
-
-    progress_callback(stage: str, current: int, total: int)
-    """
     total = len(file_entries)
     if total == 0:
         return []

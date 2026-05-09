@@ -1,15 +1,3 @@
-"""
-Central async analysis pipeline.
-
-This is the single implementation of clone → scan → parse → score → graph → persist.
-It is called in two ways:
-  1. Celery task  →  asyncio.run(run_analysis_pipeline(...))
-  2. Thread fallback  →  asyncio.run(run_analysis_pipeline(...))
-
-Using asyncio.run() inside a non-async context (Celery task or daemon thread)
-creates a fresh event loop for the duration of the call, which is safe and
-idiomatic for Python 3.10+.
-"""
 
 import asyncio
 import json
@@ -21,26 +9,13 @@ from config import ANALYSIS_TIMEOUT_SECONDS
 
 logger = logging.getLogger("codebase-intel.pipeline")
 
-
 class PipelineError(Exception):
-    """Raised for known, non-retryable pipeline failures."""
 
     def __init__(self, message: str, error_code: str):
         super().__init__(message)
         self.error_code = error_code
 
-
 async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
-    """
-    Full async analysis pipeline: scan → parse → score → build graph → persist.
-
-    Writes progress to ProgressStore at each stage via update_sync() so that
-    both Celery workers (separate process) and the FastAPI polling endpoint
-    stay in sync through the shared progress.json on disk.
-
-    Raises PipelineError, TimeoutError, MemoryError — callers must catch these
-    and set error state on the ProgressStore.
-    """
     from core.session_progress import progress_store
 
     start = time.monotonic()
@@ -57,7 +32,6 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
                 "Try a smaller repository or increase ANALYSIS_TIMEOUT_SECONDS."
             )
 
-    # ── 1. Validate session ──────────────────────────────────────────────────
     repo_dir = session_dir / "repo"
     if not repo_dir.exists():
         raise PipelineError(
@@ -66,13 +40,12 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
             error_code="REPO_NOT_FOUND",
         )
 
-    # ── 2. Scan or load file entries ─────────────────────────────────────────
     entries_path = session_dir / "file_entries.json"
     if not entries_path.exists():
         progress_store.update_sync(session_id, status="scanning")
         log.info(f"Scanning repository directory")
         from core.ingest.file_filter import scan_directory
-        # scan_directory is CPU + I/O bound; run in a thread to free the event loop.
+                                                                                    
         file_entries = await asyncio.to_thread(scan_directory, repo_dir)
         entries_data = [e.model_dump() for e in file_entries]
         await asyncio.to_thread(
@@ -87,7 +60,6 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
     log.info(f"Pipeline starting for {total} files")
     progress_store.update_sync(session_id, status="parsing", total_files=total, parsed_files=0)
 
-    # ── 3. Parse all files (bounded async concurrency) ───────────────────────
     _check_timeout()
     from core.parser.parser_service import parse_all_files_async
 
@@ -97,19 +69,16 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
     parsed = await parse_all_files_async(repo_dir, entries_data, progress_callback=_on_progress)
     _check_timeout()
 
-    # ── 4. Score ─────────────────────────────────────────────────────────────
     progress_store.update_sync(session_id, status="scoring")
     from core.scoring.complexity_scorer import score_files
     parsed = await asyncio.to_thread(score_files, parsed)
     _check_timeout()
 
-    # ── 5. Build dependency graph ─────────────────────────────────────────────
     progress_store.update_sync(session_id, status="graph")
     from core.graph.graph_builder import build_graph
     graph_data = await asyncio.to_thread(build_graph, parsed)
     _check_timeout()
 
-    # ── 6. Persist to disk ───────────────────────────────────────────────────
     progress_store.update_sync(session_id, status="saving")
 
     parsed_json = json.dumps(parsed)

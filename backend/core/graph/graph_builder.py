@@ -1,11 +1,7 @@
-"""Graph builder — creates nodes + edges from parsed file data.
-Optimized with pre-built basename index for O(1) import resolution."""
 
 from pathlib import Path
 
-
 def _build_basename_index(all_paths: set[str]) -> dict[str, list[str]]:
-    """Pre-build a basename → [full_paths] index for fast fallback lookups."""
     index: dict[str, list[str]] = {}
     for p in all_paths:
         stem = Path(p).stem
@@ -14,13 +10,11 @@ def _build_basename_index(all_paths: set[str]) -> dict[str, list[str]]:
         index[stem].append(p)
     return index
 
-
 def _resolve_import(imp: str, source_path: str, all_paths: set[str], basename_idx: dict[str, list[str]]) -> str | None:
     source_dir = str(Path(source_path).parent).replace("\\", "/")
     if source_dir == ".":
         source_dir = ""
 
-    
     if imp.startswith("."):
         parts = imp.split("/") if "/" in imp else [imp]
         if imp.startswith("../"):
@@ -35,7 +29,6 @@ def _resolve_import(imp: str, source_path: str, all_paths: set[str], basename_id
         
         base = imp.replace(".", "/")
 
-    
     candidates = [
         base,
         base + ".py",
@@ -53,14 +46,12 @@ def _resolve_import(imp: str, source_path: str, all_paths: set[str], basename_id
         if c in all_paths:
             return c
 
-    
     base_name = base.split("/")[-1] if "/" in base else base
     matches = basename_idx.get(base_name)
     if matches:
         return matches[0]
 
     return None
-
 
 def build_graph(parsed_files: list[dict]) -> dict:
     all_paths = {f["path"] for f in parsed_files}

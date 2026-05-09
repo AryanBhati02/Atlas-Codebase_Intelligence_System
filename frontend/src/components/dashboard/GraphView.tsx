@@ -42,15 +42,14 @@ import {
   type ClusterNode,
   type ClusteredGraph,
 } from "../../utils/graphClustering";
+import { createProfiler } from "../../lib/perfProfiler";
 import type { CoverageResponse } from "../../types";
+
+export const enrichNodeProfiler = createProfiler("enrichNode");
 
 const Graph3DView = lazy(() =>
   import("./Graph3DView").then((m) => ({ default: m.Graph3DView }))
 );
-
-// ---------------------------------------------------------------------------
-// Error boundary for 3D view
-// ---------------------------------------------------------------------------
 
 class Graph3DErrorBoundary extends React.Component<
   { children: React.ReactNode; onFallback: () => void },
@@ -88,10 +87,6 @@ class Graph3DErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Color helpers
-// ---------------------------------------------------------------------------
 
 const LANG_COLORS: Record<string, string> = {
   Python: "#3b82f6",
@@ -137,10 +132,6 @@ function hexToRgb(hex: string): string {
     : "124, 110, 224";
 }
 
-// ---------------------------------------------------------------------------
-// Sync radial layout (fallback when dagre is skipped)
-// ---------------------------------------------------------------------------
-
 function applyRadialLayout(nodes: Node[]): Node[] {
   const cx = 400, cy = 400;
   return nodes.map((n, i) => {
@@ -151,10 +142,6 @@ function applyRadialLayout(nodes: Node[]): Node[] {
     return { ...n, position: { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius } };
   });
 }
-
-// ---------------------------------------------------------------------------
-// Progressive node reveal
-// ---------------------------------------------------------------------------
 
 function scheduleProgressiveBuild(
   nodes: Node[],
@@ -203,10 +190,6 @@ function scheduleProgressiveBuild(
   return () => timers.forEach(clearTimeout);
 }
 
-// ---------------------------------------------------------------------------
-// Connected-node helper
-// ---------------------------------------------------------------------------
-
 function getConnectedNodeIds(nodeId: string, edges: Edge[]): Set<string> {
   const connected = new Set<string>([nodeId]);
   for (const e of edges) {
@@ -215,10 +198,6 @@ function getConnectedNodeIds(nodeId: string, edges: Edge[]): Set<string> {
   }
   return connected;
 }
-
-// ---------------------------------------------------------------------------
-// Custom file node
-// ---------------------------------------------------------------------------
 
 const CustomNode = React.memo(function CustomNode({
   data,
@@ -322,10 +301,6 @@ const nodeTypes = {
   clusterNode: ClusterNodeComponent,
 };
 
-// ---------------------------------------------------------------------------
-// Visual state snapshot
-// ---------------------------------------------------------------------------
-
 interface VisualState {
   selectedFile: string | null;
   deadFilePaths: Set<string>;
@@ -340,29 +315,31 @@ interface VisualState {
 }
 
 function enrichNode(node: Node, v: VisualState): Node {
-  const hasSearch = v.searchMatchIds.size > 0;
-  return {
-    ...node,
-    data: {
-      ...node.data,
-      selected: node.id === v.selectedFile,
-      isDead: v.deadFilePaths.has(node.id),
-      isDimmed: hasSearch
-        ? !v.searchMatchIds.has(node.id)
-        : v.connectedIds
-          ? !v.connectedIds.has(node.id)
-          : false,
-      heatmapOn: v.heatmapOn,
-      isHighlighted: hasSearch
-        ? v.searchMatchIds.has(node.id)
-        : v.highlightedFiles.has(node.id),
-      coveragePct:
-        v.showCoverage && v.coverageData?.coverage?.[node.id] != null
-          ? v.coverageData.coverage[node.id]
-          : null,
-      commentCount: v.commentCounts[node.id] || 0,
-    },
-  };
+  return enrichNodeProfiler.measure(() => {
+    const hasSearch = v.searchMatchIds.size > 0;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        selected: node.id === v.selectedFile,
+        isDead: v.deadFilePaths.has(node.id),
+        isDimmed: hasSearch
+          ? !v.searchMatchIds.has(node.id)
+          : v.connectedIds
+            ? !v.connectedIds.has(node.id)
+            : false,
+        heatmapOn: v.heatmapOn,
+        isHighlighted: hasSearch
+          ? v.searchMatchIds.has(node.id)
+          : v.highlightedFiles.has(node.id),
+        coveragePct:
+          v.showCoverage && v.coverageData?.coverage?.[node.id] != null
+            ? v.coverageData.coverage[node.id]
+            : null,
+        commentCount: v.commentCounts[node.id] || 0,
+      },
+    };
+  });
 }
 
 function styledEdge(edge: Edge, v: VisualState): Edge {
@@ -387,10 +364,6 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// Main graph component
-// ---------------------------------------------------------------------------
 
 function GraphViewInner() {
   const {
@@ -437,19 +410,11 @@ function GraphViewInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const { computeLayout, isComputing } = useGraphLayout();
 
-  // -------------------------------------------------------------------------
-  // Toast helper
-  // -------------------------------------------------------------------------
-
   const showToast = useCallback((message: string) => {
     setToast(message);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(null), 5000);
   }, []);
-
-  // -------------------------------------------------------------------------
-  // Derived visual state
-  // -------------------------------------------------------------------------
 
   const deadFilePaths = useMemo(() => {
     if (!showDeadCode || !deadCodeData) return new Set<string>();
@@ -489,10 +454,6 @@ function GraphViewInner() {
     searchMatchIds: matchingNodeIds,
   };
 
-  // -------------------------------------------------------------------------
-  // Raw structural data — triggers layout recompute
-  // -------------------------------------------------------------------------
-
   const rawNodes = useMemo((): Node[] => {
     if (!graphData) return [];
     return graphData.nodes.map((n) => ({
@@ -522,11 +483,6 @@ function GraphViewInner() {
       target: e.target,
     }));
   }, [graphData]);
-
-  // -------------------------------------------------------------------------
-  // Core layout-and-build helper
-  // Runs dagre (or radial) then progressively reveals nodes.
-  // -------------------------------------------------------------------------
 
   const runLayoutAndBuild = useCallback(
     (displayNodes: AnyNode[], displayEdges: Edge[]) => {
@@ -582,13 +538,9 @@ function GraphViewInner() {
           }
         });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
     [layout, computeLayout, fitView, setNodes, setEdges]
   );
-
-  // -------------------------------------------------------------------------
-  // Smart initial render — clusters for large repos
-  // -------------------------------------------------------------------------
 
   useEffect(() => {
     if (cleanupRef.current) {
@@ -607,11 +559,11 @@ function GraphViewInner() {
     }
 
     if (rawNodes.length <= 150) {
-      // Small repo — render all nodes, no clustering
+      
       clusteredGraphRef.current = null;
       runLayoutAndBuild(rawNodes as AnyNode[], rawEdges);
     } else if (rawNodes.length <= 600) {
-      // Medium — cluster by directory and show all clusters
+      
       const clustered = clusterByDirectory(rawNodes as AppNode[], rawEdges);
       clusteredGraphRef.current = clustered;
       showToast(
@@ -619,7 +571,7 @@ function GraphViewInner() {
       );
       runLayoutAndBuild(clustered.nodes, clustered.edges);
     } else {
-      // Large — cluster and show only the 50 biggest directories
+      
       const clustered = clusterByDirectory(rawNodes as AppNode[], rawEdges);
       const sorted = [...clustered.nodes].sort(
         (a, b) =>
@@ -646,11 +598,6 @@ function GraphViewInner() {
     };
   }, [rawNodes, rawEdges, runLayoutAndBuild, setNodes, setEdges, showToast]);
 
-  // -------------------------------------------------------------------------
-  // Cluster expand / collapse (triggered via custom event from ClusterNode)
-  // No dagre re-layout — children snap to a grid below the cluster header.
-  // -------------------------------------------------------------------------
-
   useEffect(() => {
     const handler = (e: Event) => {
       const clusterId = (e as CustomEvent<string>).detail;
@@ -658,33 +605,42 @@ function GraphViewInner() {
       if (!graph) return;
 
       const isExpanded = graph.expandedClusters.has(clusterId);
+      const clusterBefore = graph.nodes.find((n) => n.id === clusterId) as
+        | ClusterNode
+        | undefined;
+      const dirName = clusterBefore?.data.dirName ?? clusterId;
       const newGraph = isExpanded
         ? collapseCluster(clusterId, graph)
         : expandCluster(clusterId, graph);
 
       clusteredGraphRef.current = newGraph;
-      allNodesRef.current = newGraph.nodes;
-      allEdgesRef.current = newGraph.edges;
 
-      const v = visualRef.current;
-      const viewport = viewportRef.current;
-      const visible = getVisibleNodes(newGraph.nodes, viewport, viewport.zoom);
+      const activeNodes = newGraph.nodes.filter((n) => {
+        if (n.type === "clusterNode") return true;
+        const parentClusterId = newGraph.clusterOf.get(n.id);
+        if (!parentClusterId) return true;
+        const parentCluster = newGraph.nodes.find((c) => c.id === parentClusterId);
+        if (!parentCluster || parentCluster.type !== "clusterNode") return true;
+        return (parentCluster as ClusterNode).data.expanded &&
+          (parentCluster as ClusterNode).data.children.length <= 100;
+      });
 
-      const enriched = visible.map((n) =>
-        n.type === "clusterNode" ? n : enrichNode(n as Node, v)
-      );
-      const processedEdges = newGraph.edges.map((ee) => styledEdge(ee, v));
+      runLayoutAndBuild(activeNodes, newGraph.edges);
 
-      setNodes(enriched as Node[]);
-      setEdges(processedEdges);
-
-      if (!isExpanded) {
-        const cluster = newGraph.nodes.find((n) => n.id === clusterId) as
-          | ClusterNode
-          | undefined;
-        if (cluster) {
+      if (isExpanded) {
+        showToast(`Collapsed "${dirName}"`);
+      } else {
+        const subClusterPrefix = `${clusterId}/`;
+        const subClusters = newGraph.nodes.filter(
+          (n) => n.type === "clusterNode" && n.id.startsWith(subClusterPrefix)
+        );
+        if (subClusters.length > 0) {
           showToast(
-            `Expanded "${cluster.data.dirName}" — ${cluster.data.fileCount} files`
+            `Expanded "${dirName}" — ${subClusters.length} sub-directories (click to drill deeper)`
+          );
+        } else {
+          showToast(
+            `Expanded "${dirName}" — ${clusterBefore?.data.fileCount ?? 0} files`
           );
         }
       }
@@ -692,16 +648,12 @@ function GraphViewInner() {
 
     window.addEventListener("cluster:toggle", handler);
     return () => window.removeEventListener("cluster:toggle", handler);
-  }, [setNodes, setEdges, showToast]);
-
-  // -------------------------------------------------------------------------
-  // Viewport culling — debounced 100 ms, fires on every pan / zoom step
-  // -------------------------------------------------------------------------
+  }, [setNodes, setEdges, showToast, runLayoutAndBuild]);
 
   const onMove = useCallback(
     (_evt: MouseEvent | TouchEvent | null, viewport: Viewport) => {
       viewportRef.current = viewport;
-      if (allNodesRef.current.length <= 150) return; // nothing to cull
+      if (allNodesRef.current.length <= 150) return; 
 
       if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
       viewportTimerRef.current = setTimeout(() => {
@@ -718,10 +670,6 @@ function GraphViewInner() {
     },
     [setNodes]
   );
-
-  // -------------------------------------------------------------------------
-  // Visual-only effect — re-enriches currently rendered nodes on state change
-  // -------------------------------------------------------------------------
 
   useEffect(() => {
     if (nodes.length === 0) return;
@@ -743,12 +691,8 @@ function GraphViewInner() {
     matchingNodeIds,
     setNodes,
     setEdges,
-    // nodes.length intentionally excluded — we read via updater fn
+    
   ]);
-
-  // -------------------------------------------------------------------------
-  // Search — debounced 200 ms, scans allNodesRef (not just visible subset)
-  // -------------------------------------------------------------------------
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchInput(value);
@@ -775,7 +719,6 @@ function GraphViewInner() {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
   }, []);
 
-  // Jump to first search match — auto-expands a collapsed cluster if needed
   const jumpToFirstMatch = useCallback(() => {
     const first = [...matchingNodeIds][0];
     if (!first) return;
@@ -783,8 +726,7 @@ function GraphViewInner() {
     const graph = clusteredGraphRef.current;
     if (graph) {
       const clusterId = graph.clusterOf.get(first);
-      // Node is inside a collapsed cluster: expand it first.
-      // Dispatch is synchronous → allNodesRef is updated before we continue.
+      
       if (clusterId && !graph.expandedClusters.has(clusterId)) {
         window.dispatchEvent(
           new CustomEvent("cluster:toggle", { detail: clusterId })
@@ -792,7 +734,6 @@ function GraphViewInner() {
       }
     }
 
-    // rAF lets ReactFlow commit the setNodes before we call setCenter
     requestAnimationFrame(() => {
       const node = allNodesRef.current.find((n) => n.id === first);
       if (node) {
@@ -803,10 +744,6 @@ function GraphViewInner() {
       }
     });
   }, [matchingNodeIds, setCenter]);
-
-  // -------------------------------------------------------------------------
-  // Command palette events
-  // -------------------------------------------------------------------------
 
   useEffect(() => {
     const onToggleHeatmap = () => setHeatmapOn((v) => !v);
@@ -841,13 +778,9 @@ function GraphViewInner() {
     };
   }, [fitView, setSelectedFile]);
 
-  // -------------------------------------------------------------------------
-  // Node interaction
-  // -------------------------------------------------------------------------
-
   const onNodeClick = useCallback(
     async (_: React.MouseEvent, node: Node) => {
-      // Cluster node clicks are handled by the ClusterNode component itself
+      
       if (node.type === "clusterNode") return;
       if (!sessionId) return;
 
@@ -871,12 +804,12 @@ function GraphViewInner() {
       try {
         const content = await getFileContent(sessionId, node.id);
         setFileContent(content);
-      } catch { /* ignore */ }
+      } catch {  }
       try {
         setAILoading(true);
         const ai = await explainFile(sessionId, node.id);
         setAIExplanation(ai.explanation, ai.source);
-      } catch { /* ignore */ } finally {
+      } catch {  } finally {
         setAILoading(false);
       }
     },
@@ -894,10 +827,6 @@ function GraphViewInner() {
   const onPaneClick = useCallback(() => {
     setSelectedFile(null);
   }, [setSelectedFile]);
-
-  // -------------------------------------------------------------------------
-  // Empty state
-  // -------------------------------------------------------------------------
 
   if (!graphData || graphData.nodes.length === 0) {
     return (
@@ -924,10 +853,6 @@ function GraphViewInner() {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-
   const isClustered = clusteredGraphRef.current !== null;
   const totalFiles = graphData.nodes.length;
 
@@ -935,7 +860,7 @@ function GraphViewInner() {
     <div className="relative w-full h-full flex flex-col" style={{ zIndex: 1 }}>
       <div className="relative flex-1 min-h-0 w-full">
 
-        {/* Layout computing overlay */}
+        {}
         {isComputing && (
           <div
             className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 backdrop-blur-sm"
@@ -948,7 +873,7 @@ function GraphViewInner() {
           </div>
         )}
 
-        {/* Progressive build counter */}
+        {}
         {buildText && !isComputing && (
           <motion.div
             initial={{ opacity: 0, y: -6 }}
@@ -965,7 +890,7 @@ function GraphViewInner() {
           </motion.div>
         )}
 
-        {/* Analysis progress (during re-analysis) */}
+        {}
         {isAnalyzing &&
           analysisProgress?.stage === "parsing" &&
           analysisProgress.total > 0 && (
@@ -983,7 +908,7 @@ function GraphViewInner() {
             </motion.div>
           )}
 
-        {/* Search bar — top left */}
+        {}
         {!show3DGraph && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
@@ -1018,7 +943,7 @@ function GraphViewInner() {
               )}
             </div>
 
-            {/* Match results */}
+            {}
             <AnimatePresence>
               {searchInput && (
                 <motion.div
@@ -1062,7 +987,7 @@ function GraphViewInner() {
           </motion.div>
         )}
 
-        {/* Toast notification */}
+        {}
         <AnimatePresence>
           {toast && (
             <motion.div
@@ -1086,7 +1011,7 @@ function GraphViewInner() {
           )}
         </AnimatePresence>
 
-        {/* Main graph */}
+        {}
         {show3DGraph ? (
           <Graph3DErrorBoundary onFallback={toggle3DGraph}>
             <Suspense
@@ -1143,7 +1068,7 @@ function GraphViewInner() {
           onFitView={() => fitView({ padding: 0.3, duration: 400 })}
         />
 
-        {/* Stats bar — bottom left */}
+        {}
         {!show3DGraph && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -1193,10 +1118,6 @@ function GraphViewInner() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Public export — wraps inner component with ReactFlowProvider
-// ---------------------------------------------------------------------------
 
 export function GraphView() {
   return (

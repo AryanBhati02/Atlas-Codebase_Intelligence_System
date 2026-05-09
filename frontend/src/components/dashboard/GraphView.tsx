@@ -386,6 +386,8 @@ function GraphViewInner() {
     commentCounts,
     isAnalyzing,
     analysisProgress,
+    isChatPanelOpen,
+    toggleChatPanel,
   } = useAppStore();
 
   const [heatmapOn, setHeatmapOn] = useState(false);
@@ -800,6 +802,10 @@ function GraphViewInner() {
 
       lastClickRef.current = { id: node.id, time: now };
 
+      if (!isChatPanelOpen) {
+        toggleChatPanel();
+      }
+
       setSelectedFile(node.id);
       try {
         const content = await getFileContent(sessionId, node.id);
@@ -821,6 +827,8 @@ function GraphViewInner() {
       setAILoading,
       setFunctionGraphData,
       setFunctionGraphLoading,
+      isChatPanelOpen,
+      toggleChatPanel,
     ]
   );
 

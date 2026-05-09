@@ -1,5 +1,6 @@
 
-import { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, useEffect } from "react";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactFlow, {
   Background,
@@ -124,28 +125,35 @@ export function FunctionGraph() {
       },
     }));
 
-    const edges: Edge[] = functionGraphData.edges.map((e) => ({
-      id: e.id,
-      source: `${functionGraphData.file_path}::${e.source_fn}`,
-      target: `${functionGraphData.file_path}::${e.target_fn}`,
-      animated: !e.is_cross_file,
-      style: {
-        stroke: e.is_cross_file
-          ? "rgba(139, 92, 246, 0.35)"
-          : "rgba(124, 110, 224, 0.3)",
-        strokeWidth: Math.min(e.call_count, 3),
-        strokeDasharray: e.is_cross_file ? "5 3" : undefined,
-      },
-      label: e.call_count > 1 ? `×${e.call_count}` : undefined,
-      labelStyle: { fill: "#64748b", fontSize: 9 },
-      labelBgStyle: { fill: "#0e0e18", opacity: 0.8 },
-    }));
+    const nodeIdSet = new Set(nodes.map((n) => n.id));
+
+    const edges: Edge[] = functionGraphData.edges
+      .map((e) => ({
+        id: e.id,
+        source: e.source_fn,
+        target: e.target_fn,
+        animated: !e.is_cross_file,
+        style: {
+          stroke: e.is_cross_file
+            ? "rgba(139, 92, 246, 0.35)"
+            : "rgba(124, 110, 224, 0.3)",
+          strokeWidth: Math.min(e.call_count, 3),
+          strokeDasharray: e.is_cross_file ? "5 3" : undefined,
+        },
+        label: e.call_count > 1 ? `×${e.call_count}` : undefined,
+        labelStyle: { fill: "#64748b", fontSize: 9 },
+        labelBgStyle: { fill: "#0e0e18", opacity: 0.8 },
+      }))
+      .filter((e) => nodeIdSet.has(e.source) && nodeIdSet.has(e.target));
 
     return { rfNodes: nodes, rfEdges: edges };
   }, [functionGraphData, deadFunctionNames]);
 
-  const [nodes, , onNodesChange] = useNodesState(rfNodes);
-  const [edges, , onEdgesChange] = useEdgesState(rfEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
+
+  useEffect(() => { setNodes(rfNodes); }, [rfNodes, setNodes]);
+  useEffect(() => { setEdges(rfEdges); }, [rfEdges, setEdges]);
 
   const handleClose = useCallback(() => {
     setFunctionGraphData(null, null);
@@ -164,7 +172,12 @@ export function FunctionGraph() {
     []
   );
 
+  const handleBoundaryReset = useCallback(() => {
+    setFunctionGraphData(null, null);
+  }, [setFunctionGraphData]);
+
   return (
+    <ErrorBoundary onReset={handleBoundaryReset}>
     <AnimatePresence>
       {showFunctionGraph && (
         <motion.div
@@ -243,5 +256,6 @@ export function FunctionGraph() {
         </motion.div>
       )}
     </AnimatePresence>
+    </ErrorBoundary>
   );
 }

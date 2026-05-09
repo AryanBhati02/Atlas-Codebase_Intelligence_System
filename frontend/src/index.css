@@ -42,6 +42,9 @@
   --node-bg: rgba(12, 12, 22, 0.82);
   --node-bg-hover: rgba(16, 14, 30, 0.9);
   --node-text: #c8ccd4;
+  --node-border-alpha: 30;
+  --edge-stroke: rgba(124, 110, 224, 0.18);
+  --edge-stroke-active: rgba(246, 196, 69, 0.35);
 
   --header-bg: rgba(8, 8, 14, 0.94);
   --glass-bg: rgba(12, 12, 22, 0.55);
@@ -129,9 +132,12 @@
   --accent-cyan-subtle: rgba(14, 165, 201, 0.08);
   --accent-gold-subtle: rgba(217, 119, 6, 0.08);
 
-  --node-bg: rgba(255, 255, 255, 0.92);
+  --node-bg: rgba(255, 255, 255, 0.97);
   --node-bg-hover: rgba(255, 255, 255, 1);
-  --node-text: #3a3a3a;
+  --node-text: #1a1a2e;
+  --node-border-alpha: 55;
+  --edge-stroke: rgba(100, 100, 130, 0.35);
+  --edge-stroke-active: rgba(180, 120, 0, 0.55);
 
   --header-bg: rgba(255, 253, 250, 0.94);
   --glass-bg: rgba(255, 253, 250, 0.75);
@@ -566,13 +572,13 @@ body::before {
 }
 
 .react-flow__edge-path {
-  stroke: var(--accent-purple-border) !important;
+  stroke: var(--edge-stroke) !important;
   stroke-width: 1 !important;
   transition: stroke 0.3s ease, stroke-width 0.3s ease;
 }
 
 .react-flow__edge-path:hover {
-  stroke: rgba(246, 196, 69, 0.5) !important;
+  stroke: var(--edge-stroke-active) !important;
   stroke-width: 2 !important;
 }
 

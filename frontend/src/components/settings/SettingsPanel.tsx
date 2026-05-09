@@ -407,8 +407,9 @@ export function SettingsPanel() {
     if (settingsPanelOpen) {
       loadSettings();
       loadOllamaModels();
+      getAIStatus().then(setAIStatus).catch(() => {});
     }
-  }, [settingsPanelOpen, loadSettings, loadOllamaModels]);
+  }, [settingsPanelOpen, loadSettings, loadOllamaModels, setAIStatus]);
 
   const handleRefreshAll = async () => {
     setIsRefreshing(true);

@@ -791,7 +791,7 @@ function Graph3DScene({ expandedCluster3D, onExpandCluster }: {
 }
 
 export function Graph3DView() {
-  const { graphData } = useAppStore();
+  const { graphData, setSelectedFile } = useAppStore();
   const themeColors = useThemeStore((s) => s.colors);
   const [showControls, setShowControls] = useState(true);
   const [expandedCluster3D, setExpandedCluster3D] = useState<string | null>(null);
@@ -804,6 +804,16 @@ export function Graph3DView() {
   useEffect(() => {
     setExpandedCluster3D(null);
   }, [graphData]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedFile(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setSelectedFile]);
 
   const isClustered = (graphData?.nodes.length ?? 0) > CLUSTER_THRESHOLD && expandedCluster3D === null;
 

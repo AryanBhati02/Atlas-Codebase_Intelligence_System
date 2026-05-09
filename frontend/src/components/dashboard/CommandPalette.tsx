@@ -80,14 +80,10 @@ export function CommandPalette() {
     if (!isOpen) return [];
     const statics = getCommands();
     const dynamics = buildDynamicCommands(getAppState());
-    return [...statics, ...dynamics];
+    const commands = [...statics, ...dynamics];
+    searchIndex.build(commands);
+    return commands;
   }, [isOpen, graphData, parsedFiles]);
-
-  useEffect(() => {
-    if (isOpen && allCommands.length > 0) {
-      searchIndex.build(allCommands);
-    }
-  }, [isOpen, allCommands]);
 
   const results = useMemo(() => {
     if (!isOpen) return [];

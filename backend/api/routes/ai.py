@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
+import httpx
 
 from models.schemas import (
     AIExplainRequest, AIExplainResponse,
@@ -21,6 +22,8 @@ from core.ai.prompts import (
 )
 from core.ai.cache import get_cached, set_cached, hash_content
 from core.ai.advanced import scan_security, get_refactor_suggestions, generate_readme, generate_pr_review
+from core.errors import ProviderUnavailableError
+from core.ai.free_api import ProviderError
 from utils.session import get_session_dir
 from utils.session_cache import load_parsed, load_graph, load_dead_code
 
@@ -85,7 +88,41 @@ async def ai_explain(request: AIExplainRequest):
             parsed = p
             break
 
-    result = await explain_file(request.file_path, content, parsed)
+    try:
+        result = await explain_file(request.file_path, content, parsed)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "AI provider not available. Is Ollama running?",
+                "code": "PROVIDER_OFFLINE",
+            },
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "AI response timed out. Try a smaller file or a faster model.",
+                "code": "TIMEOUT",
+            },
+        )
+    except ProviderUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": f"AI provider error: {exc}",
+                "code": "PROVIDER_ERROR",
+            },
+        )
+    except ProviderError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": f"AI provider error: {exc}",
+                "code": "PROVIDER_ERROR",
+            },
+        )
+
     response = AIExplainResponse(
         file_path=request.file_path,
         explanation=result["explanation"],
@@ -107,7 +144,24 @@ async def ai_analyze(request: AIAnalyzeCodeRequest):
     if cached:
         return AIAnalyzeCodeResponse(**cached)
 
-    result = await analyze_code(request.code, request.file_path)
+    try:
+        result = await analyze_code(request.code, request.file_path)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "AI provider not available. Is Ollama running?", "code": "PROVIDER_OFFLINE"},
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "AI response timed out. Try a smaller file or a faster model.", "code": "TIMEOUT"},
+        )
+    except (ProviderUnavailableError, ProviderError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": f"AI provider error: {exc}", "code": "PROVIDER_ERROR"},
+        )
+
     response = AIAnalyzeCodeResponse(analysis=result["analysis"], source=result["source"])
     set_cached(session_dir, cache_key, content_hash, response.model_dump())
     return response
@@ -131,7 +185,24 @@ async def ai_beginner_guide(request: BeginnerGuideRequest):
         return BeginnerGuideResponse(**cached)
 
     repo_name = _load_repo_name(session_dir, request.session_id)
-    result = await beginner_guide(repo_name, all_parsed, repo_dir)
+    try:
+        result = await beginner_guide(repo_name, all_parsed, repo_dir)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "AI provider not available. Is Ollama running?", "code": "PROVIDER_OFFLINE"},
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "AI response timed out. Try a smaller file or a faster model.", "code": "TIMEOUT"},
+        )
+    except (ProviderUnavailableError, ProviderError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": f"AI provider error: {exc}", "code": "PROVIDER_ERROR"},
+        )
+
     response = BeginnerGuideResponse(
         guide=result["guide"],
         top_files=[TopFileEntry(**tf) for tf in result["top_files"]],
@@ -158,7 +229,24 @@ async def ai_qa(request: QARequest):
     if cached:
         return QAResponse(**cached)
 
-    result = await answer_question(request.question, all_parsed, repo_dir)
+    try:
+        result = await answer_question(request.question, all_parsed, repo_dir)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "AI provider not available. Is Ollama running?", "code": "PROVIDER_OFFLINE"},
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "AI response timed out. Try a smaller file or a faster model.", "code": "TIMEOUT"},
+        )
+    except (ProviderUnavailableError, ProviderError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": f"AI provider error: {exc}", "code": "PROVIDER_ERROR"},
+        )
+
     response = QAResponse(
         answer=result["answer"],
         referenced_files=[FileReference(**rf) for rf in result["referenced_files"]],

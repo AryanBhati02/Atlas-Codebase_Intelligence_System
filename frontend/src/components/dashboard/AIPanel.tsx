@@ -113,6 +113,7 @@ function ExplainTab() {
 
   const [content, setContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const streamedFileRef = useRef<string | null>(null);
   const ctrlRef = useRef<StreamControl | null>(null);
 
@@ -120,6 +121,7 @@ function ExplainTab() {
     if (!selectedFile || !sessionId) {
       setContent("");
       setIsStreaming(false);
+      setErrorMsg(null);
       return;
     }
     if (streamedFileRef.current === selectedFile) return;
@@ -127,6 +129,7 @@ function ExplainTab() {
 
     ctrlRef.current?.cancel();
     setContent("");
+    setErrorMsg(null);
     setIsStreaming(true);
 
     const ctrl = streamAI(
@@ -138,9 +141,18 @@ function ExplainTab() {
           setIsStreaming(false);
           ctrlRef.current = null;
         },
-        onError: () => {
+        onError: (err) => {
           setIsStreaming(false);
           ctrlRef.current = null;
+          let msg = err.message;
+          try {
+            const body = JSON.parse(msg.replace(/^HTTP \d+: /, ""));
+            if (body?.detail?.error) msg = body.detail.error;
+            else if (body?.detail) msg = String(body.detail);
+          } catch {
+            // use raw message
+          }
+          setErrorMsg(msg);
         },
       }
     );
@@ -176,7 +188,12 @@ function ExplainTab() {
         {isStreaming && <CancelButton onClick={handleCancel} />}
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 ai-content">
-        {content ? (
+        {errorMsg ? (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400">
+            <X className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        ) : content ? (
           <>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             {isStreaming && <StreamCursor />}
@@ -237,6 +254,7 @@ function BeginnerTab() {
 
   const [content, setContent] = useState(beginnerGuide ?? "");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const didStreamRef = useRef(false);
   const ctrlRef = useRef<StreamControl | null>(null);
 
@@ -265,10 +283,19 @@ function BeginnerTab() {
             setBeginnerGuide(accumulated, [], "ai");
           }
         },
-        onError: () => {
+        onError: (err) => {
           setIsStreaming(false);
           ctrlRef.current = null;
-          didStreamRef.current = false; 
+          didStreamRef.current = false;
+          let msg = err.message;
+          try {
+            const body = JSON.parse(msg.replace(/^HTTP \d+: /, ""));
+            if (body?.detail?.error) msg = body.detail.error;
+            else if (body?.detail) msg = String(body.detail);
+          } catch {
+            // use raw message
+          }
+          setErrorMsg(msg);
         },
       }
     );
@@ -331,7 +358,12 @@ function BeginnerTab() {
       )}
 
       <div className="flex-1 overflow-y-auto px-4 py-3 ai-content">
-        {content ? (
+        {errorMsg ? (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400">
+            <X className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        ) : content ? (
           <>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             {isStreaming && <StreamCursor />}

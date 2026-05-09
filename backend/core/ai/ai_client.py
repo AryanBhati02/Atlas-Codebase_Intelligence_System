@@ -2,6 +2,13 @@
 from pathlib import Path
 
 from core.ai.router import route_prompt
+from core.errors import ProviderUnavailableError
+from core.ai.free_api import ProviderError
+
+_OLLAMA_OPTIONS = {
+    "num_predict": 2000,
+    "stop": ["\n\n\n", "---END---"],
+}
 
 def _fallback_explain(file_path: str, content: str, parsed: dict) -> str:
     lang = parsed.get("language", "Unknown")
@@ -582,7 +589,11 @@ async def beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pat
         f"Use markdown tables, bold text, and code formatting for readability."
     )
 
-    result, source = await route_prompt(prompt)
+    try:
+        result, source = await route_prompt(prompt)
+    except (ProviderUnavailableError, ProviderError):
+        return _build_beginner_guide(repo_name, parsed_files, repo_dir)
+
     if result:
         top_files = sorted(parsed_files, key=lambda f: -f.get("complexity_score", 0))[:5]
         top_file_list = [{"path": f["path"], "complexity_score": f.get("complexity_score", 0)} for f in top_files]

@@ -3,11 +3,19 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { GitBranch, Loader2, ArrowRight, AlertCircle } from "lucide-react";
 import { ingestGitHub } from "../../api/ingest";
-import { useAppStore } from "../../store/appStore";
+import { useSessionStore } from "../../store/sessionStore";
+import { useUiStore } from "../../store/uiStore";
+
+const CLONE_TIMEOUT_MS = 120_000;
 
 export function GitHubInput() {
   const [url, setUrl] = useState("");
-  const { isLoading, error, setLoading, setError, setSession, setShowIngestModal } = useAppStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const setSessionAndLoading = useSessionStore((s) => s.setSessionAndLoading);
+  const setSessionError = useSessionStore((s) => s.setError);
+  const setShowIngestModal = useUiStore((s) => s.setShowIngestModal);
 
   const isValidUrl = /^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+/.test(
     url.trim()
@@ -17,21 +25,60 @@ export function GitHubInput() {
     e.preventDefault();
     if (!isValidUrl || isLoading) return;
 
-    setLoading(true);
+    setIsLoading(true);
     setError(null);
+    setSessionError(null);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CLONE_TIMEOUT_MS);
 
     try {
-      const data = await ingestGitHub(url.trim());
-      setLoading(false);
-      setSession(data);
+      const data = await ingestGitHub(url.trim(), controller.signal);
+      clearTimeout(timeoutId);
+      setSessionAndLoading(data);
       setShowIngestModal(false);
     } catch (err: unknown) {
-      setLoading(false);
+      clearTimeout(timeoutId);
+      setIsLoading(false);
+
+      // AbortError from our 120s timeout
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("Clone timed out. The repository might be too large or the network is slow.");
+        return;
+      }
+
       if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } };
-        setError(axiosErr.response?.data?.detail || "Failed to clone repository.");
+        // Server responded with an error status
+        const axiosErr = err as { response?: { status?: number; data?: { detail?: string } } };
+        const status = axiosErr.response?.status;
+        const detail = axiosErr.response?.data?.detail;
+
+        if (status === 404) {
+          setError("Repository not found. Check the URL and make sure it's a public repo.");
+        } else if (
+          detail &&
+          (detail.toLowerCase().includes("timeout") ||
+            detail.toLowerCase().includes("timed out"))
+        ) {
+          setError("Clone timed out. The repository might be too large or the network is slow.");
+        } else if (detail) {
+          setError(detail);
+        } else {
+          setError(`Server error (${status ?? "unknown"}). Please try again.`);
+        }
+      } else if (err && typeof err === "object" && "request" in err) {
+        // Request was made but no response received (network failure)
+        setError("Cannot reach the server. Is the backend running on port 8000?");
+      } else if (
+        err instanceof Error &&
+        (err.message.toLowerCase().includes("timeout") ||
+          err.message.toLowerCase().includes("timed out"))
+      ) {
+        setError("Clone timed out. The repository might be too large or the network is slow.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
       } else {
-        setError("Network error. Is the backend running on port 8000?");
+        setError("An unexpected error occurred. Please try again.");
       }
     }
   };
@@ -95,7 +142,7 @@ export function GitHubInput() {
           </>
         ) : (
           <>
-            Clone & Analyze
+            Clone &amp; Analyze
             <ArrowRight className="w-4 h-4" />
           </>
         )}

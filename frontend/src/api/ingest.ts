@@ -1,8 +1,8 @@
 import { client } from "./client";
 import type { IngestResponse } from "../types";
 
-export async function ingestGitHub(url: string): Promise<IngestResponse> {
-  const response = await client.post<IngestResponse>("/api/ingest/github", { url });
+export async function ingestGitHub(url: string, signal?: AbortSignal): Promise<IngestResponse> {
+  const response = await client.post<IngestResponse>("/api/ingest/github", { url }, { signal });
   return response.data;
 }
 
@@ -13,4 +13,18 @@ export async function ingestZip(file: File): Promise<IngestResponse> {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return response.data;
+}
+
+export async function checkSession(sessionId: string): Promise<boolean> {
+  try {
+    await client.get(`/api/session/${sessionId}/status`);
+    return true;
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "response" in err) {
+      const axiosErr = err as { response?: { status?: number } };
+      const status = axiosErr.response?.status;
+      if (status === 404 || status === 410) return false;
+    }
+    return false;
+  }
 }

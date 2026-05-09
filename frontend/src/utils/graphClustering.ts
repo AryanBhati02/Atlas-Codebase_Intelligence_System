@@ -72,6 +72,20 @@ function getAvgComplexity(nodes: AppNode[]): number {
   return nodes.reduce((acc, n) => acc + (n.data.complexity ?? 0), 0) / nodes.length;
 }
 
+
+/**
+ * Compute the set of edges that should be visible given the current cluster state.
+ *
+ * Rules:
+ * 1. Both endpoints must resolve to a node that exists in visibleNodeIds.
+ * 2. For a collapsed cluster the cluster-node itself is the representative.
+ * 3. For an expanded cluster, the individual file node is the representative
+ *    only when it is present in visibleNodeIds.  If the viewport filter culled
+ *    it, fall back to the cluster-node so the connection is still represented.
+ * 4. Intra-cluster edges are only emitted when the cluster is expanded AND both
+ *    file nodes are individually visible.
+ * 5. Duplicate cross-cluster connections are collapsed into one edge.
+ */
 function computeVisibleEdges(
   originalEdges: Edge[],
   clusterOf: Map<string, string>,
@@ -83,10 +97,12 @@ function computeVisibleEdges(
   for (const edge of originalEdges) {
     const srcCluster = clusterOf.get(edge.source);
     const tgtCluster = clusterOf.get(edge.target);
+    // Skip edges referencing nodes not tracked in clusterOf (orphan backend edges).
     if (!srcCluster || !tgtCluster) continue;
 
     if (srcCluster === tgtCluster) {
-      
+      // Intra-cluster edge: only show when the cluster is expanded and both
+      // individual file nodes survived viewport culling.
       if (
         expandedClusters.has(srcCluster) &&
         visibleNodeIds.has(edge.source) &&
@@ -97,11 +113,20 @@ function computeVisibleEdges(
       continue;
     }
 
+    // Cross-cluster edge.
+    // Resolve each endpoint to the finest-grained visible representative:
+    // – Expanded cluster + file visible   → use the file node id.
+    // – Expanded cluster + file culled    → fall back to cluster node id.
+    // – Cluster not expanded              → use the cluster node id.
     const srcExpanded = expandedClusters.has(srcCluster);
     const tgtExpanded = expandedClusters.has(tgtCluster);
-    const visibleSrc = srcExpanded && visibleNodeIds.has(edge.source) ? edge.source : srcCluster;
-    const visibleTgt = tgtExpanded && visibleNodeIds.has(edge.target) ? edge.target : tgtCluster;
 
+    const visibleSrc =
+      srcExpanded && visibleNodeIds.has(edge.source) ? edge.source : srcCluster;
+    const visibleTgt =
+      tgtExpanded && visibleNodeIds.has(edge.target) ? edge.target : tgtCluster;
+
+    // Skip self-loops and edges whose representative is not actually present.
     if (
       visibleSrc === visibleTgt ||
       !visibleNodeIds.has(visibleSrc) ||
@@ -110,7 +135,12 @@ function computeVisibleEdges(
 
     const key = `${visibleSrc}=>${visibleTgt}`;
     if (!edgeMap.has(key)) {
-      edgeMap.set(key, { id: key, source: visibleSrc, target: visibleTgt, type: "smoothstep" });
+      edgeMap.set(key, {
+        id: key,
+        source: visibleSrc,
+        target: visibleTgt,
+        type: "smoothstep",
+      });
     }
   }
 

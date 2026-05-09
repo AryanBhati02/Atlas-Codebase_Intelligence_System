@@ -40,6 +40,14 @@ export interface SessionState {
     source_type: string;
     ingested_at: string;
   }) => void;
+  setSessionAndLoading: (data: {
+    session_id: string;
+    repo_name: string;
+    files: FileEntry[];
+    total_files: number;
+    source_type: string;
+    ingested_at: string;
+  }) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   reset: () => void;
@@ -55,6 +63,7 @@ export interface SessionState {
 const initialState: Omit<
   SessionState,
   | "setSession"
+  | "setSessionAndLoading"
   | "setLoading"
   | "setError"
   | "reset"
@@ -98,6 +107,20 @@ export const useSessionStore = create<SessionState>((set) => ({
       ingestedAt: data.ingested_at,
       status: "parsing",
       error: null,
+    }),
+
+  setSessionAndLoading: (data) =>
+    set({
+      sessionId: data.session_id,
+      repoName: data.repo_name,
+      repoUrl: data.repo_name,
+      files: data.files,
+      totalFiles: data.total_files,
+      sourceType: data.source_type,
+      ingestedAt: data.ingested_at,
+      status: "parsing",
+      error: null,
+      isLoading: false,
     }),
 
   setLoading: (loading) => set({ isLoading: loading }),

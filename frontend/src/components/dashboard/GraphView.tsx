@@ -347,6 +347,11 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
     v.selectedFile &&
     (edge.source === v.selectedFile || edge.target === v.selectedFile);
   const deadTarget = v.showDeadCode && v.deadFilePaths.has(edge.target);
+  // Dim non-connected edges when a file is selected, but floor at 0.3 so they
+  // remain perceptible.  The stroke itself already carries alpha; combining a
+  // low-alpha stroke with a low opacity previously yielded ~4% effective alpha
+  // on dark backgrounds, making edges render as completely invisible.
+  const dimmed = v.connectedIds && !isConnected && v.searchMatchIds.size === 0;
   return {
     ...edge,
     type: "smoothstep",
@@ -354,12 +359,13 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
     animated: !!isConnected,
     style: {
       stroke: isConnected
-        ? "rgba(246, 196, 69, 0.4)"
+        ? "rgba(246, 196, 69, 0.55)"
         : v.heatmapOn
-          ? "rgba(245, 158, 11, 0.2)"
-          : "rgba(124, 110, 224, 0.2)",
+          ? "rgba(245, 158, 11, 0.35)"
+          : "rgba(124, 110, 224, 0.35)",
       strokeWidth: isConnected ? 2 : 1,
-      opacity: v.connectedIds && !isConnected && v.searchMatchIds.size === 0 ? 0.2 : 1,
+      // Minimum opacity 0.3 — never fully invisible.
+      opacity: dimmed ? 0.3 : 1,
       transition: "all 0.5s ease",
     },
   };
@@ -655,7 +661,7 @@ function GraphViewInner() {
   const onMove = useCallback(
     (_evt: MouseEvent | TouchEvent | null, viewport: Viewport) => {
       viewportRef.current = viewport;
-      if (allNodesRef.current.length <= 150) return; 
+      if (allNodesRef.current.length <= 150) return;
 
       if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
       viewportTimerRef.current = setTimeout(() => {
@@ -663,14 +669,25 @@ function GraphViewInner() {
         if (allNodes.length <= 150) return;
 
         const visible = getVisibleNodes(allNodes, viewport, viewport.zoom);
+        const visibleIds = new Set(visible.map((n) => n.id));
         const v = visualRef.current;
+
         const enriched = visible.map((n) =>
           n.type === "clusterNode" ? n : enrichNode(n as Node, v)
         );
         setNodes(enriched as Node[]);
+
+        // Keep the edge list in sync with the culled node list.
+        // ReactFlow silently drops any edge whose source or target is absent
+        // from the current nodes array, so we must filter to only edges whose
+        // both endpoints are present in the current visible set.
+        const culledEdges = allEdgesRef.current.filter(
+          (e) => visibleIds.has(e.source) && visibleIds.has(e.target)
+        );
+        setEdges(culledEdges.map((e) => styledEdge(e, v)));
       }, 100);
     },
-    [setNodes]
+    [setNodes, setEdges]
   );
 
   useEffect(() => {

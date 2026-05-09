@@ -50,13 +50,13 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
         <Handle
           type="target"
           position={Position.Top}
-          style={{ background: "#7c6ee0", border: "none", width: 4, height: 4 }}
+          style={{ background: "var(--accent-purple)", border: "none", width: 4, height: 4 }}
         />
         <div
           style={{
             width: 200,
-            background: "rgba(20, 15, 45, 0.75)",
-            border: "1.5px dashed rgba(124, 110, 224, 0.35)",
+            background: "var(--bg-elevated)",
+            border: "1.5px dashed var(--accent-purple-border)",
             borderRadius: 8,
             padding: "6px 10px",
             display: "flex",
@@ -73,10 +73,10 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
             );
           }}
         >
-          <FolderOpen size={11} style={{ color: "#a78bfa", flexShrink: 0 }} />
+          <FolderOpen size={11} style={{ color: "var(--accent-violet)", flexShrink: 0 }} />
           <span
             style={{
-              color: "#94a3b8",
+              color: "var(--text-secondary)",
               fontSize: 10,
               fontWeight: 600,
               flex: 1,
@@ -89,19 +89,19 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
           </span>
           <span
             style={{
-              color: "#475569",
+              color: "var(--text-muted)",
               fontSize: 9,
               flexShrink: 0,
             }}
           >
             {data.fileCount} files
           </span>
-          <ChevronDown size={10} style={{ color: "#7c6ee0", flexShrink: 0 }} />
+          <ChevronDown size={10} style={{ color: "var(--accent-purple)", flexShrink: 0 }} />
         </div>
         <Handle
           type="source"
           position={Position.Bottom}
-          style={{ background: "#7c6ee0", border: "none", width: 4, height: 4 }}
+          style={{ background: "var(--accent-purple)", border: "none", width: 4, height: 4 }}
         />
       </>
     );
@@ -112,15 +112,15 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
       <Handle
         type="target"
         position={Position.Top}
-        style={{ background: "#7c6ee0", border: "none", width: 5, height: 5 }}
+        style={{ background: "var(--accent-purple)", border: "none", width: 5, height: 5 }}
       />
 
       <div
         style={{
           width: 280,
           minHeight: 80,
-          background: "rgba(18, 12, 42, 0.97)",
-          border: "1.5px dashed rgba(124, 110, 224, 0.45)",
+          background: "var(--bg-surface-solid)",
+          border: "1.5px dashed var(--accent-purple-border-hover)",
           borderRadius: 12,
           padding: "10px 12px",
           display: "flex",
@@ -128,18 +128,18 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
           gap: 7,
           backdropFilter: "blur(14px)",
           boxShadow:
-            "0 4px 28px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03)",
+            "0 4px 28px var(--shadow-color), inset 0 1px 0 var(--border-subtle)",
         }}
       >
         {}
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <FolderClosed
             size={13}
-            style={{ color: "#a78bfa", flexShrink: 0 }}
+            style={{ color: "var(--accent-violet)", flexShrink: 0 }}
           />
           <span
             style={{
-              color: "#e2e8f0",
+              color: "var(--text-primary)",
               fontSize: 12,
               fontWeight: 600,
               flex: 1,
@@ -155,8 +155,8 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
           {}
           <span
             style={{
-              background: "rgba(124, 110, 224, 0.15)",
-              color: "#a78bfa",
+              background: "var(--accent-purple-muted)",
+              color: "var(--accent-violet)",
               fontSize: 9,
               fontWeight: 700,
               padding: "2px 7px",
@@ -178,12 +178,12 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
               );
             }}
             style={{
-              background: "rgba(124, 110, 224, 0.12)",
-              border: "1px solid rgba(124, 110, 224, 0.22)",
+              background: "var(--accent-purple-subtle)",
+              border: "1px solid var(--accent-purple-border)",
               borderRadius: 6,
               cursor: "pointer",
               padding: "2px 4px",
-              color: "#a78bfa",
+              color: "var(--accent-violet)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -226,7 +226,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
             ))}
             <span
               style={{
-                color: "#334155",
+                color: "var(--text-tertiary)",
                 fontSize: 9,
                 marginLeft: 2,
                 overflow: "hidden",
@@ -244,7 +244,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span
             style={{
-              color: "#1e293b",
+              color: "var(--text-tertiary)",
               fontSize: 8,
               flexShrink: 0,
               textTransform: "uppercase",
@@ -258,7 +258,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
             style={{
               flex: 1,
               height: 3,
-              background: "rgba(255,255,255,0.05)",
+              background: "var(--border-medium)",
               borderRadius: 99,
               overflow: "hidden",
             }}
@@ -292,7 +292,7 @@ export const ClusterNodeComponent = React.memo(function ClusterNodeComponent({
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: "#7c6ee0", border: "none", width: 5, height: 5 }}
+        style={{ background: "var(--accent-purple)", border: "none", width: 5, height: 5 }}
       />
     </>
   );

@@ -249,13 +249,13 @@ const CustomNode = React.memo(function CustomNode({
           borderColor: data.isHighlighted
             ? "rgba(34, 211, 238, 0.5)"
             : data.selected
-              ? `${color}80`
+              ? `${color}99`
               : data.isDead
                 ? "rgba(107, 114, 128, 0.15)"
-                : `${color}18`,
+                : `${color}44`,
           boxShadow: data.isDead
             ? "none"
-            : `0 0 ${glowSize}px rgba(${hexToRgb(color)}, ${glowIntensity})`,
+            : `0 0 ${glowSize}px rgba(${hexToRgb(color)}, ${glowIntensity}), 0 1px 4px rgba(0,0,0,0.15)`,
           outline: data.isHighlighted ? "1.5px solid rgba(34, 211, 238, 0.4)" : "none",
           outlineOffset: 2,
         }}
@@ -354,10 +354,10 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
     animated: !!isConnected,
     style: {
       stroke: isConnected
-        ? "rgba(246, 196, 69, 0.3)"
+        ? "rgba(246, 196, 69, 0.4)"
         : v.heatmapOn
-          ? "rgba(245, 158, 11, 0.1)"
-          : "rgba(124, 110, 224, 0.1)",
+          ? "rgba(245, 158, 11, 0.2)"
+          : "rgba(124, 110, 224, 0.2)",
       strokeWidth: isConnected ? 2 : 1,
       opacity: v.connectedIds && !isConnected && v.searchMatchIds.size === 0 ? 0.2 : 1,
       transition: "all 0.5s ease",

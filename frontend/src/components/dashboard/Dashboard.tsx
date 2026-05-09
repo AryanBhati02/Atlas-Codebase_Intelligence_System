@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useRef, useState, useMemo } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion, motion as m } from "framer-motion";
 import {
   RotateCcw,
   GitBranch,
@@ -77,17 +77,46 @@ export function Dashboard() {
     };
   }, []);
 
+  const [backendToast, setBackendToast] = useState<string | null>(null);
+
   const pollStatus = useCallback(async () => {
     try {
       const status = await getAIStatus();
       setAIStatus(status);
     } catch {
-      
+      // silent — periodic poll failures are non-critical
     }
   }, [setAIStatus]);
 
+  // On initial mount: retry up to 3 times with 2s delay before showing toast
   useEffect(() => {
-    void pollStatus();
+    let cancelled = false;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2_000;
+
+    const tryFetch = async (attempt: number): Promise<void> => {
+      if (cancelled) return;
+      try {
+        const status = await getAIStatus();
+        if (!cancelled) setAIStatus(status);
+      } catch {
+        if (cancelled) return;
+        if (attempt < MAX_RETRIES) {
+          await new Promise<void>((r) => setTimeout(r, RETRY_DELAY_MS));
+          await tryFetch(attempt + 1);
+        } else {
+          setBackendToast(
+            "Backend connection failed. Is the server running on port 8000?"
+          );
+        }
+      }
+    };
+
+    void tryFetch(1);
+    return () => { cancelled = true; };
+  }, [setAIStatus]);
+
+  useEffect(() => {
     const interval = setInterval(() => { void pollStatus(); }, 30_000);
     return () => clearInterval(interval);
   }, [pollStatus]);
@@ -317,6 +346,54 @@ export function Dashboard() {
   return (
     <div className="dashboard-layout">
       <div ref={glowRef} className="cursor-glow" />
+
+      {/* Non-blocking backend connection toast */}
+      <AnimatePresence>
+        {backendToast && (
+          <m.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.25 }}
+            style={{
+              position: "fixed",
+              bottom: "1.25rem",
+              right: "1.25rem",
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.625rem",
+              padding: "0.625rem 0.875rem",
+              borderRadius: "0.75rem",
+              background: "rgba(239,68,68,0.10)",
+              border: "1px solid rgba(239,68,68,0.20)",
+              color: "#f87171",
+              fontSize: "0.6875rem",
+              fontWeight: 500,
+              maxWidth: "22rem",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <span style={{ flex: 1 }}>{backendToast}</span>
+            <button
+              onClick={() => setBackendToast(null)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#f87171",
+                cursor: "pointer",
+                opacity: 0.7,
+                fontSize: "0.875rem",
+                lineHeight: 1,
+                padding: "0 0.125rem",
+              }}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </m.div>
+        )}
+      </AnimatePresence>
 
       <header className="dashboard-header">
         <div className="flex items-center gap-2.5">

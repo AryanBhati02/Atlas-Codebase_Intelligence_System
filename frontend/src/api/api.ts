@@ -47,12 +47,22 @@ export function analyzeWithProgress(
 ): CancellableAnalysis {
   let aborted = false;
 
+  const ANALYSIS_TIMEOUT_MS = 120_000;
+
   const promise = new Promise<AnalyzeResponse>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      if (!aborted) {
+        aborted = true;
+        reject(new Error("Clone timed out — try again."));
+      }
+    }, ANALYSIS_TIMEOUT_MS);
+
     void (async () => {
       try {
         await client.post(`/api/analyze/start/${sessionId}`);
 
         if (aborted) {
+          clearTimeout(timeoutId);
           reject(new Error("Aborted"));
           return;
         }
@@ -77,11 +87,13 @@ export function analyzeWithProgress(
             onProgress(prog.stage, prog.current, prog.total);
 
             if (prog.error) {
+              clearTimeout(timeoutId);
               reject(new Error(prog.error));
               return;
             }
 
             if (prog.done) {
+              clearTimeout(timeoutId);
               const res = await client.post<AnalyzeResponse>(
                 `/api/analyze/${sessionId}`
               );
@@ -91,6 +103,7 @@ export function analyzeWithProgress(
           } catch (pollErr: unknown) {
             consecutiveErrors++;
             if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+              clearTimeout(timeoutId);
               reject(new Error("Lost connection to analysis server."));
               return;
             }
@@ -98,8 +111,12 @@ export function analyzeWithProgress(
           }
         }
 
-        if (aborted) reject(new Error("Aborted"));
+        if (aborted) {
+          clearTimeout(timeoutId);
+          reject(new Error("Aborted"));
+        }
       } catch (err: unknown) {
+        clearTimeout(timeoutId);
         reject(err);
       }
     })();
@@ -107,6 +124,7 @@ export function analyzeWithProgress(
 
   return { promise, abort: () => { aborted = true; } };
 }
+
 
 export async function getGraph(sessionId: string): Promise<GraphData> {
   const res = await client.get<GraphData>(`/api/analyze/graph/${sessionId}`);

@@ -51,6 +51,7 @@ export function useAppStore() {
     analysisProgress: session.analysisProgress,
     error: session.error,
     setSession: session.setSession,
+    setSessionAndLoading: session.setSessionAndLoading,
     setLoading: session.setLoading,
     setError: session.setError,
     reset: session.reset,

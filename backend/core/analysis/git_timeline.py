@@ -30,7 +30,11 @@ def extract_timeline(repo_dir: Path) -> list[dict]:
         logger.warning(f"Git log failed for {repo_dir}: {e}")
         return []
 
-    lines = result.stdout.strip().split("\n")
+    stdout = result.stdout.strip()
+    if not stdout:
+        return []
+
+    lines = stdout.split("\n")
     commits: list[dict] = []
     current: dict | None = None
 

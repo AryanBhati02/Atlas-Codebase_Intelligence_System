@@ -39,6 +39,7 @@ export function GitTimeline() {
 
   const [expanded, setExpanded] = useState(false);
   const [sliderValue, setSliderValue] = useState(0);
+  const [fetchError, setFetchError] = useState(false);
   const sliderRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -46,11 +47,18 @@ export function GitTimeline() {
     let cancelled = false;
     (async () => {
       setTimelineLoading(true);
+      setFetchError(false);
       try {
         const data = await getGitTimeline(sessionId);
-        if (!cancelled) setTimelineData(data);
+        if (!cancelled) {
+          setTimelineData(data);
+          setTimelineLoading(false);
+        }
       } catch {
-        if (!cancelled) setTimelineLoading(false);
+        if (!cancelled) {
+          setFetchError(true);
+          setTimelineLoading(false);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -130,7 +138,13 @@ export function GitTimeline() {
             <Loader2 className="w-3 h-3 animate-spin text-accent-cyan/50 ml-1" />
           )}
 
-          {isLoaded && !hasCommits && (
+          {fetchError && !isTimelineLoading && (
+            <span className="text-[9px] ml-auto mr-2" style={{ color: "var(--text-muted)" }}>
+              Unable to load git history
+            </span>
+          )}
+
+          {!fetchError && isLoaded && !hasCommits && (
             <span className="text-[9px] ml-auto mr-2" style={{ color: "var(--text-muted)" }}>
               No git history available
             </span>

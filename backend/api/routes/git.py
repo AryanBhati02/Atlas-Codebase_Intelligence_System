@@ -1,5 +1,6 @@
 
 import json
+import logging
 from fastapi import APIRouter, HTTPException
 
 from models.schemas import (
@@ -28,27 +29,46 @@ async def git_timeline(session_id: str):
 
     cached = get_cached_timeline(session_dir)
     if cached is not None:
-        commits = [CommitEntry(**c) for c in cached]
-        return TimelineResponse(commits=commits, total_commits=len(commits))
+        try:
+            commits = [CommitEntry(**c) for c in cached]
+            return TimelineResponse(commits=commits, total_commits=len(commits))
+        except Exception as e:
+            logging.getLogger("codebase-intel.git").warning(
+                f"Cached timeline deserialization failed for {session_id}: {e}"
+            )
 
     import asyncio, subprocess
-    try:
-        await asyncio.to_thread(
-            subprocess.run,
-            ["git", "fetch", "--deepen=50"],
-            capture_output=True, text=True, timeout=30,
-            cwd=str(repo_dir),
-        )
-    except Exception:
-        pass  
+    if (repo_dir / ".git").exists():
+        try:
+            await asyncio.to_thread(
+                subprocess.run,
+                ["git", "fetch", "--deepen=50"],
+                capture_output=True, text=True, timeout=30,
+                cwd=str(repo_dir),
+            )
+        except Exception:
+            pass
 
-    raw_commits = extract_timeline(repo_dir)
+    try:
+        raw_commits = extract_timeline(repo_dir)
+    except Exception as e:
+        logging.getLogger("codebase-intel.git").error(
+            f"extract_timeline raised for {session_id}: {e}"
+        )
+        return TimelineResponse(commits=[], total_commits=0)
+
     if not raw_commits:
         return TimelineResponse(commits=[], total_commits=0)
 
-    cache_timeline(session_dir, raw_commits)
+    try:
+        commits = [CommitEntry(**c) for c in raw_commits]
+    except Exception as e:
+        logging.getLogger("codebase-intel.git").error(
+            f"CommitEntry construction failed for {session_id}: {e}"
+        )
+        return TimelineResponse(commits=[], total_commits=0)
 
-    commits = [CommitEntry(**c) for c in raw_commits]
+    cache_timeline(session_dir, raw_commits)
     return TimelineResponse(commits=commits, total_commits=len(commits))
 
 @router.get("/diff/{session_id}", response_model=CommitDiffResponse)

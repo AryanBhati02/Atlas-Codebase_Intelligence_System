@@ -31,6 +31,7 @@ import {
   updateProviderKey,
   testProvider,
   clearAICache,
+  selectModel,
 } from "../../api/api";
 import type { ProviderInfo } from "../../types";
 
@@ -402,6 +403,8 @@ export function SettingsPanel() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
+  const [isSwitchingModel, setIsSwitchingModel] = useState(false);
+  const [switchToast, setSwitchToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (settingsPanelOpen) {
@@ -447,6 +450,23 @@ export function SettingsPanel() {
 
   const handleCancel = () => {
     cancelDraft();
+  };
+
+  const handleModelSelect = async (modelName: string) => {
+    if (modelName === draft.selectedModel) return;
+    const prev = draft.selectedModel;
+    setIsSwitchingModel(true);
+    updateDraft({ selectedModel: modelName });
+    try {
+      await selectModel(modelName);
+      await loadSettings();
+      setSwitchToast(modelName);
+      setTimeout(() => setSwitchToast(null), 3000);
+    } catch {
+      updateDraft({ selectedModel: prev });
+    } finally {
+      setIsSwitchingModel(false);
+    }
   };
 
   return (
@@ -636,8 +656,9 @@ export function SettingsPanel() {
                     </div>
                     <select
                       value={draft.selectedModel}
-                      onChange={(e) => updateDraft({ selectedModel: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none focus:border-accent-purple/30 transition-colors appearance-none cursor-pointer"
+                      onChange={(e) => { void handleModelSelect(e.target.value); }}
+                      disabled={isSwitchingModel || isLoadingModels}
+                      className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none focus:border-accent-purple/30 transition-colors appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{
                         background: "var(--surface-input-bg)",
                         border: "1px solid var(--surface-input-border)",
@@ -670,7 +691,7 @@ export function SettingsPanel() {
                       }}
                     >
                       <XCircle className="w-3 h-3 shrink-0" />
-                      <span>Ollama not running at localhost:11434</span>
+                      <span>Ollama is not running. Start Ollama to use local AI models.</span>
                     </div>
                   )}
                   {ollamaReachable && ollamaModels.length > 0 && (
@@ -685,6 +706,24 @@ export function SettingsPanel() {
                       <span>{ollamaModels.length} model{ollamaModels.length !== 1 ? "s" : ""} detected</span>
                     </div>
                   )}
+                  <AnimatePresence>
+                    {switchToast && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px]"
+                        style={{
+                          background: "rgba(16,185,129,0.08)",
+                          border: "1px solid rgba(16,185,129,0.15)",
+                          color: "#34d399",
+                        }}
+                      >
+                        <Check className="w-3.5 h-3.5 shrink-0" />
+                        <span>Switched to {switchToast}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   <button
                     onClick={() => updateDraft({ preferLocal: !draft.preferLocal })}

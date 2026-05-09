@@ -32,7 +32,12 @@ logger = get_logger("atlas.ai.router")
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 _ollama_model = "phi3:mini"
 OLLAMA_MODEL = _ollama_model
-OLLAMA_TIMEOUT = 60.0
+OLLAMA_TIMEOUT = 90.0
+
+_OLLAMA_OPTIONS = {
+    "num_predict": 2000,
+    "stop": ["\n\n\n", "---END---"],
+}
 
 _MAX_RATE_LIMIT_RETRIES = 2                                                
 
@@ -146,6 +151,7 @@ async def _call_ollama(prompt: str) -> str:
             "model": model,
             "prompt": prompt,
             "stream": False,
+            "options": _OLLAMA_OPTIONS,
         })
         if resp.status_code == 200:
             text = resp.json().get("response", "")
@@ -237,7 +243,12 @@ async def _stream_ollama(prompt: str) -> AsyncGenerator[str, None]:
     async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
         async with client.stream(
             "POST", OLLAMA_URL,
-            json={"model": model, "prompt": prompt, "stream": True},
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": True,
+                "options": _OLLAMA_OPTIONS,
+            },
         ) as resp:
             if resp.status_code != 200:
                 raise ProviderError(f"Ollama returned {resp.status_code}")

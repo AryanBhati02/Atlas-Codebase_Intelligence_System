@@ -1,0 +1,16 @@
+{
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "extraPaths": [
+    "."
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "exclude": [
+    "sessions",
+    ".venv",
+    "**/__pycache__"
+  ],
+  "reportPrivateImportUsage": "none",
+  "reportMissingModuleSource": "none"
+}

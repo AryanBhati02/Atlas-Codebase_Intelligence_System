@@ -1,0 +1,17 @@
+{
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "extraPaths": [
+    "backend"
+  ],
+  "venvPath": "backend",
+  "venv": ".venv",
+  "exclude": [
+    "backend/sessions",
+    "backend/.venv",
+    "backend/**/__pycache__",
+    "frontend/node_modules",
+    "frontend/dist"
+  ],
+  "reportPrivateImportUsage": "none"
+}

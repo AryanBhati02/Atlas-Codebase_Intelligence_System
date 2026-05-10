@@ -2,7 +2,14 @@ import { client } from "./client";
 import type { IngestResponse } from "../types";
 
 export async function ingestGitHub(url: string, signal?: AbortSignal): Promise<IngestResponse> {
-  const response = await client.post<IngestResponse>("/api/ingest/github", { url }, { signal });
+  const response = await client.post<IngestResponse>(
+    "/api/ingest/github",
+    { url },
+    {
+      signal,
+      timeout: 0,
+    }
+  );
   return response.data;
 }
 

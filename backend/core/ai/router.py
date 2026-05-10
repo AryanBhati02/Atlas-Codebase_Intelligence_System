@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 import httpx
 
@@ -383,7 +383,9 @@ async def _stream_huggingface(prompt: str) -> AsyncGenerator[str, None]:
     if result:
         yield result
 
-_STREAM_CALLERS: dict[str, object] = {
+StreamCaller = Callable[[str], AsyncGenerator[str, None]]
+
+_STREAM_CALLERS: dict[str, StreamCaller] = {
     "ollama": _stream_ollama,
     "groq": _stream_groq,
     "gemini": _stream_gemini,

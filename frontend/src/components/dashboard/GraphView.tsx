@@ -132,17 +132,6 @@ function hexToRgb(hex: string): string {
     : "124, 110, 224";
 }
 
-function applyRadialLayout(nodes: Node[]): Node[] {
-  const cx = 400, cy = 400;
-  return nodes.map((n, i) => {
-    if (i === 0) return { ...n, position: { x: cx, y: cy } };
-    const ring = Math.ceil(i / 8);
-    const angle = ((i % 8) / 8) * Math.PI * 2 + ring * 0.4;
-    const radius = ring * 150;
-    return { ...n, position: { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius } };
-  });
-}
-
 function scheduleProgressiveBuild(
   nodes: Node[],
   edges: Edge[],
@@ -347,10 +336,10 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
     v.selectedFile &&
     (edge.source === v.selectedFile || edge.target === v.selectedFile);
   const deadTarget = v.showDeadCode && v.deadFilePaths.has(edge.target);
-  // Dim non-connected edges when a file is selected, but floor at 0.3 so they
-  // remain perceptible.  The stroke itself already carries alpha; combining a
-  // low-alpha stroke with a low opacity previously yielded ~4% effective alpha
-  // on dark backgrounds, making edges render as completely invisible.
+  
+  
+  
+  
   const dimmed = v.connectedIds && !isConnected && v.searchMatchIds.size === 0;
   return {
     ...edge,
@@ -362,7 +351,7 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
         ? "var(--edge-stroke-active)"
         : "var(--edge-stroke)",
       strokeWidth: isConnected ? 2 : 1,
-      // Minimum opacity 0.3 — never fully invisible.
+      
       opacity: dimmed ? 0.3 : 1,
       transition: "all 0.5s ease",
     },
@@ -668,10 +657,10 @@ function GraphViewInner() {
         );
         setNodes(enriched as Node[]);
 
-        // Keep the edge list in sync with the culled node list.
-        // ReactFlow silently drops any edge whose source or target is absent
-        // from the current nodes array, so we must filter to only edges whose
-        // both endpoints are present in the current visible set.
+        
+        
+        
+        
         const culledEdges = allEdgesRef.current.filter(
           (e) => visibleIds.has(e.source) && visibleIds.has(e.target)
         );

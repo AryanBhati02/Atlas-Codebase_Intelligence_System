@@ -1,5 +1,7 @@
+from collections.abc import Sequence
 
-def _normalize(value: float, values: list[float]) -> float:
+
+def _normalize(value: float, values: Sequence[float]) -> float:
     if not values:
         return 0.0
     min_v = min(values)

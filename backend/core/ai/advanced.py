@@ -13,7 +13,7 @@ def _build_readme_fallback(repo_name: str, parsed_files: list[dict], graph: dict
         lang = f.get("language") or "Other"
         lang_counts[lang] = lang_counts.get(lang, 0) + 1
         total_loc += f.get("loc", 0)
-    primary_lang = max(lang_counts, key=lang_counts.get) if lang_counts else "Unknown"
+    primary_lang = max(lang_counts, key=lambda lang: lang_counts[lang]) if lang_counts else "Unknown"
 
     dir_map: dict[str, list[str]] = {}
     for f in parsed_files:

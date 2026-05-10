@@ -4,6 +4,7 @@ import json
 import logging
 import threading
 from pathlib import Path
+from typing import Protocol, cast
 
 from fastapi import APIRouter, HTTPException
 
@@ -20,6 +21,11 @@ from utils.session import get_session_dir
 logger = logging.getLogger("codebase-intel.routes.analyze")
 
 router = APIRouter(prefix="/analyze", tags=["Analyze"])
+
+
+class CeleryTask(Protocol):
+    def delay(self, *args: object, **kwargs: object) -> object:
+        ...
 
 def _run_pipeline_in_thread(session_id: str, session_dir: Path) -> None:
     from core.pipeline import PipelineError, run_analysis_pipeline
@@ -88,7 +94,7 @@ async def start_analysis(session_id: str):
     try:
         from workers.tasks import run_analysis_pipeline_task
 
-        run_analysis_pipeline_task.delay(session_id, source_type)
+        cast(CeleryTask, run_analysis_pipeline_task).delay(session_id, source_type)
         celery_ok = True
         logger.info(f"[{session_id}] Dispatched to Celery (source_type={source_type})")
     except ImportError:

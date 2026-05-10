@@ -84,11 +84,11 @@ export function Dashboard() {
       const status = await getAIStatus();
       setAIStatus(status);
     } catch {
-      // silent — periodic poll failures are non-critical
+      
     }
   }, [setAIStatus]);
 
-  // On initial mount: retry up to 3 times with 2s delay before showing toast
+  
   useEffect(() => {
     let cancelled = false;
     const MAX_RETRIES = 3;
@@ -347,7 +347,7 @@ export function Dashboard() {
     <div className="dashboard-layout">
       <div ref={glowRef} className="cursor-glow" />
 
-      {/* Non-blocking backend connection toast */}
+      {}
       <AnimatePresence>
         {backendToast && (
           <m.div

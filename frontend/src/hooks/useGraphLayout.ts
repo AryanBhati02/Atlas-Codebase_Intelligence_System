@@ -70,7 +70,7 @@ export function useGraphLayout() {
     (
       nodes: Node[],
       edges: Edge[],
-      direction: "TB" | "LR" = "TB"
+      layoutType: "force" | "hierarchical" | "radial" | "layered" = "hierarchical"
     ): Promise<LayoutResult> => {
       return new Promise<LayoutResult>((resolve, reject) => {
         const worker = workerRef.current;
@@ -99,7 +99,7 @@ export function useGraphLayout() {
         const serNodes = nodes.map(({ id, type, data }) => ({ id, type, data }));
         const serEdges = edges.map(({ id, source, target }) => ({ id, source, target }));
 
-        worker.postMessage({ nodes: serNodes, edges: serEdges, direction });
+        worker.postMessage({ nodes: serNodes, edges: serEdges, layoutType });
       });
     },
     []

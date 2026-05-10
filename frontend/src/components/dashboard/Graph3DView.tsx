@@ -43,7 +43,7 @@ function compute3DLayout(
     const idx = i % perLayer;
     const phi = Math.acos(1 - 2 * (idx + 0.5) / perLayer);
     const theta = Math.PI * (1 + Math.sqrt(5)) * idx;
-    const r = 8 + layer * 6;
+    const r = 12 + layer * 10;
     return {
       id: n.id, label: n.label, language: n.language,
       complexity: (typeof n.complexity_score === "number" && isFinite(n.complexity_score)) ? n.complexity_score : 0.5,
@@ -90,7 +90,7 @@ function buildClusterNodes(rawNodes: RawNode[]): RawNode[] {
     let dominantLang: string | null = null;
     let maxCount = 0;
     langCounts.forEach((c, l) => { if (c > maxCount) { maxCount = c; dominantLang = l; } });
-    const clusterSize = 1.0 + Math.log2(Math.max(fileCount, 1)) * 0.5;
+    const clusterSize = 0.8 + Math.log10(Math.max(fileCount, 1)) * 0.6;
     clusterNodes.push({
       id: `3d-cluster-${dir}`,
       label: `${dir} (${fileCount} files)`,

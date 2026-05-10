@@ -122,6 +122,9 @@ function ExplainTab() {
       setContent("");
       setIsStreaming(false);
       setErrorMsg(null);
+      // Clear the guard so re-selecting the same file after deselection
+      // triggers a fresh stream instead of showing "Waiting for file selection".
+      streamedFileRef.current = null;
       return;
     }
     if (streamedFileRef.current === selectedFile) return;

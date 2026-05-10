@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
+import { useGraphStore } from "../../store/graphStore";
 
 function FunctionNodeComponent({
   data,
@@ -85,10 +86,15 @@ export function FunctionGraph() {
     functionGraphFile,
     showFunctionGraph,
     isFunctionGraphLoading,
-    setFunctionGraphData,
     deadCodeData,
     showDeadCode,
   } = useAppStore();
+
+  // Use the store directly so close only flips the visibility flag —
+  // it does NOT wipe functionGraphData/functionGraphFile, which would
+  // cause the ErrorBoundary or AnimatePresence teardown to run with
+  // null data and potentially crash the parent graph view.
+  const toggleFunctionGraph = useGraphStore((s) => s.toggleFunctionGraph);
 
   const deadFunctionNames = useMemo(() => {
     if (!showDeadCode || !deadCodeData || !functionGraphFile) return new Set<string>();
@@ -155,9 +161,16 @@ export function FunctionGraph() {
   useEffect(() => { setNodes(rfNodes); }, [rfNodes, setNodes]);
   useEffect(() => { setEdges(rfEdges); }, [rfEdges, setEdges]);
 
+  // Close only hides the panel — keeps functionGraphData intact so the
+  // next open is instant and so the AnimatePresence exit animation runs
+  // without accessing null state.
   const handleClose = useCallback(() => {
-    setFunctionGraphData(null, null);
-  }, [setFunctionGraphData]);
+    try {
+      toggleFunctionGraph();
+    } catch (err) {
+      console.error("[FunctionGraph] close error:", err);
+    }
+  }, [toggleFunctionGraph]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -172,12 +185,16 @@ export function FunctionGraph() {
     []
   );
 
+  // On error boundary reset, just hide the panel — same safe approach.
   const handleBoundaryReset = useCallback(() => {
-    setFunctionGraphData(null, null);
-  }, [setFunctionGraphData]);
+    try {
+      toggleFunctionGraph();
+    } catch (err) {
+      console.error("[FunctionGraph] boundary reset error:", err);
+    }
+  }, [toggleFunctionGraph]);
 
   return (
-    <ErrorBoundary onReset={handleBoundaryReset}>
     <AnimatePresence>
       {showFunctionGraph && (
         <motion.div
@@ -187,75 +204,77 @@ export function FunctionGraph() {
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className="fn-graph-panel"
         >
-          { }
-          <div className="flex items-center justify-between px-4 py-2.5
-            border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-            <div className="flex items-center gap-2">
-              <GitBranch className="w-3.5 h-3.5 text-accent-purple" />
-              <span className="text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                Function Graph
-              </span>
-              {functionGraphFile && (
-                <span className="text-[10px] font-mono truncate max-w-[200px]" style={{ color: "var(--text-muted)" }}>
-                  {functionGraphFile}
+          {/* ErrorBoundary is inside the conditional so its full-height
+              fallback renders only within the FunctionGraph panel, not
+              as a sibling overlay that covers the main 2D ReactFlow graph. */}
+          <ErrorBoundary onReset={handleBoundaryReset}>
+            <div className="flex items-center justify-between px-4 py-2.5
+              border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-3.5 h-3.5 text-accent-purple" />
+                <span className="text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Function Graph
                 </span>
-              )}
-              {functionGraphData && (
-                <span className="text-[9px] ml-1" style={{ color: "var(--text-muted)" }}>
-                  {functionGraphData.nodes.length} functions · {functionGraphData.edges.length} calls
-                </span>
+                {functionGraphFile && (
+                  <span className="text-[10px] font-mono truncate max-w-[200px]" style={{ color: "var(--text-muted)" }}>
+                    {functionGraphFile}
+                  </span>
+                )}
+                {functionGraphData && (
+                  <span className="text-[9px] ml-1" style={{ color: "var(--text-muted)" }}>
+                    {functionGraphData.nodes.length} functions · {functionGraphData.edges.length} calls
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={handleClose}
+                className="p-1 rounded-md transition-colors"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0">
+              {isFunctionGraphLoading ? (
+                <div className="flex items-center justify-center h-full gap-2">
+                  <Loader2 className="w-4 h-4 text-accent-purple animate-spin" />
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Building function graph…</span>
+                </div>
+              ) : rfNodes.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    No functions found in this file
+                  </span>
+                </div>
+              ) : (
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onNodeClick={onNodeClick}
+                  nodeTypes={nodeTypes}
+                  fitView
+                  fitViewOptions={{ padding: 0.4 }}
+                  minZoom={0.3}
+                  maxZoom={2.5}
+                  proOptions={{ hideAttribution: true }}
+                >
+                  <Background
+                    color="rgba(139, 92, 246, 0.03)"
+                    gap={16}
+                  />
+                  <Controls
+                    showInteractive={false}
+                    position="bottom-right"
+                  />
+                </ReactFlow>
               )}
             </div>
-            <button
-              onClick={handleClose}
-              className="p-1 rounded-md transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          { }
-          <div className="flex-1 min-h-0">
-            {isFunctionGraphLoading ? (
-              <div className="flex items-center justify-center h-full gap-2">
-                <Loader2 className="w-4 h-4 text-accent-purple animate-spin" />
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>Building function graph…</span>
-              </div>
-            ) : rfNodes.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  No functions found in this file
-                </span>
-              </div>
-            ) : (
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeClick={onNodeClick}
-                nodeTypes={nodeTypes}
-                fitView
-                fitViewOptions={{ padding: 0.4 }}
-                minZoom={0.3}
-                maxZoom={2.5}
-                proOptions={{ hideAttribution: true }}
-              >
-                <Background
-                  color="rgba(139, 92, 246, 0.03)"
-                  gap={16}
-                />
-                <Controls
-                  showInteractive={false}
-                  position="bottom-right"
-                />
-              </ReactFlow>
-            )}
-          </div>
+          </ErrorBoundary>
         </motion.div>
       )}
     </AnimatePresence>
-    </ErrorBoundary>
   );
 }

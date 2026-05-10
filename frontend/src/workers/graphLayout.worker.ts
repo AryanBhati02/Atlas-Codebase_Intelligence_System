@@ -13,10 +13,12 @@ interface RawEdge {
   target: string;
 }
 
+type LayoutType = "force" | "hierarchical" | "radial" | "layered";
+
 interface WorkerInput {
   nodes: RawNode[];
   edges: RawEdge[];
-  direction: "TB" | "LR";
+  layoutType: LayoutType;
 }
 
 interface PositionedNode extends RawNode {
@@ -31,20 +33,29 @@ interface WorkerOutput {
 
 self.onmessage = (event: MessageEvent<WorkerInput>): void => {
   try {
-    const { nodes, edges, direction } = event.data;
+    const { nodes, edges, layoutType } = event.data;
 
     const g = new dagre.graphlib.Graph();
     g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({
-      rankdir: direction,
-      ranksep: 90,
-      nodesep: 70,
-      marginx: 50,
-      marginy: 50,
-    });
+
+    switch (layoutType) {
+      case "hierarchical":
+        g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80, marginx: 40, marginy: 40 });
+        break;
+      case "force":
+        g.setGraph({ rankdir: "TB", nodesep: 120, ranksep: 120, marginx: 60, marginy: 60 });
+        break;
+      case "radial":
+        g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80, marginx: 40, marginy: 40 });
+        break;
+      case "layered":
+        g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 100, marginx: 40, marginy: 40 });
+        break;
+      default:
+        g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80, marginx: 40, marginy: 40 });
+    }
 
     for (const node of nodes) {
-      
       const isCluster = node.type === "clusterNode";
       g.setNode(node.id, {
         width: isCluster ? 280 : 200,
@@ -71,6 +82,26 @@ self.onmessage = (event: MessageEvent<WorkerInput>): void => {
         },
       };
     });
+
+    if (layoutType === "radial") {
+      const cx = positioned.reduce((sum, n) => sum + n.position.x, 0) / positioned.length;
+      const cy = positioned.reduce((sum, n) => sum + n.position.y, 0) / positioned.length;
+      positioned.forEach((n) => {
+        const dx = n.position.x - cx;
+        const dy = n.position.y - cy;
+        const r = Math.sqrt(dx * dx + dy * dy) * 0.8;
+        const angle = Math.atan2(dy, dx);
+        n.position.x = cx + r * Math.cos(angle);
+        n.position.y = cy + r * Math.sin(angle);
+      });
+    }
+
+    if (layoutType === "force") {
+      positioned.forEach((n) => {
+        n.position.x += (Math.random() - 0.5) * 40;
+        n.position.y += (Math.random() - 0.5) * 40;
+      });
+    }
 
     const output: WorkerOutput = { nodes: positioned, edges, error: null };
     self.postMessage(output);

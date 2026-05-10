@@ -122,6 +122,7 @@ function ExplainTab() {
       setContent("");
       setIsStreaming(false);
       setErrorMsg(null);
+      streamedFileRef.current = null;
       return;
     }
     if (streamedFileRef.current === selectedFile) return;
@@ -159,6 +160,7 @@ function ExplainTab() {
     ctrlRef.current = ctrl;
 
     return () => {
+      streamedFileRef.current = null;
       ctrl.cancel();
     };
   }, [selectedFile, sessionId]);
@@ -317,7 +319,7 @@ function BeginnerTab() {
       const fc = await getFileContent(sessionId, path);
       setFileContent(fc);
     } catch {
-      
+
     }
   };
 
@@ -484,7 +486,7 @@ function QATab() {
       const fc = await getFileContent(sessionId, path);
       setFileContent(fc);
     } catch {
-      
+
     }
   };
 
@@ -706,10 +708,9 @@ export function AIPanel() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1 px-3 py-2 text-[10px] font-medium transition-colors relative
-                ${
-                  isActive
-                    ? "text-accent-cyan border-b border-accent-cyan"
-                    : "text-slate-500 hover:text-slate-300"
+                ${isActive
+                  ? "text-accent-cyan border-b border-accent-cyan"
+                  : "text-slate-500 hover:text-slate-300"
                 }`}
             >
               <Icon className="w-3 h-3" />

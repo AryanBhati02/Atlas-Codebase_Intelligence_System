@@ -359,10 +359,8 @@ function styledEdge(edge: Edge, v: VisualState): Edge {
     animated: !!isConnected,
     style: {
       stroke: isConnected
-        ? "rgba(246, 196, 69, 0.55)"
-        : v.heatmapOn
-          ? "rgba(245, 158, 11, 0.35)"
-          : "rgba(124, 110, 224, 0.35)",
+        ? "var(--edge-stroke-active)"
+        : "var(--edge-stroke)",
       strokeWidth: isConnected ? 2 : 1,
       // Minimum opacity 0.3 — never fully invisible.
       opacity: dimmed ? 0.3 : 1,
@@ -530,14 +528,7 @@ function GraphViewInner() {
         cleanupRef.current = cancel;
       }
 
-      if (layout === "radial") {
-        applyAndBuild(applyRadialLayout(displayNodes as Node[]) as AnyNode[]);
-        return;
-      }
-
-      const direction = layout === "layered" ? "LR" : "TB";
-
-      computeLayout(displayNodes as Node[], displayEdges, direction)
+      computeLayout(displayNodes as Node[], displayEdges, layout)
         .then(({ nodes: positioned }) => applyAndBuild(positioned as AnyNode[]))
         .catch((err: Error) => {
           const msg = err.message;

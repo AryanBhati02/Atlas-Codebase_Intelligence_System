@@ -90,13 +90,72 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
     await asyncio.to_thread(
         (session_dir / "graph.json").write_text, graph_json, "utf-8"
     )
+    _check_timeout()
+
+    
+    
+    
+    function_count = 0
+    try:
+        progress_store.update_sync(session_id, status="function_graph")
+        log.info("Building function-level call graph…")
+
+        from core.parser.tree_sitter_parser import TreeSitterParser
+        from core.parser.call_graph_builder import build_call_graph, graph_to_json, graph_to_pyg_data
+        from core.tracer.fusion_engine import FusionEngine
+        from core.tracer.git_coedits import GitCoEditExtractor
+
+        ts_parser = TreeSitterParser()
+        fn_nodes = await asyncio.to_thread(
+            ts_parser.parse_repository, str(repo_dir)
+        )
+        function_count = len(fn_nodes)
+        progress_store.update_sync(session_id, function_count=function_count)
+        log.info(f"tree-sitter parsed {function_count} function nodes.")
+
+        fn_graph = await asyncio.to_thread(build_call_graph, fn_nodes)
+
+        coedit_data = {}
+        if (repo_dir / ".git").exists():
+            try:
+                extractor = GitCoEditExtractor(str(repo_dir))
+                coedit_data = await asyncio.to_thread(
+                    extractor.get_function_coedits, fn_nodes
+                )
+                log.info(f"Git co-edit pairs computed: {len(coedit_data)}")
+            except Exception as coedit_exc:
+                log.warning(f"Git co-edit extraction failed; continuing with static graph: {coedit_exc}")
+        else:
+            log.info("No .git directory found; fusion will use static graph only.")
+
+        fn_graph = await asyncio.to_thread(
+            FusionEngine().fuse, fn_graph, coedit_data
+        )
+
+        fn_graph_json = json.dumps(graph_to_json(fn_graph), ensure_ascii=False)
+        fn_pyg_json   = json.dumps(graph_to_pyg_data(fn_graph), ensure_ascii=False)
+
+        await asyncio.to_thread(
+            (session_dir / "function_graph.json").write_text, fn_graph_json, "utf-8"
+        )
+        await asyncio.to_thread(
+            (session_dir / "function_graph_pyg.json").write_text, fn_pyg_json, "utf-8"
+        )
+        log.info(
+            f"Function call graph saved: {fn_graph.number_of_nodes()} nodes, "
+            f"{fn_graph.number_of_edges()} edges."
+        )
+    except Exception as fn_exc:
+        
+        log.warning(f"Function-level call graph stage failed (non-fatal): {fn_exc}", exc_info=True)
 
     elapsed = _elapsed()
-    log.info(f"Pipeline complete: {len(parsed)} files in {elapsed:.1f}s")
+    log.info(f"Pipeline complete: {len(parsed)} files, {function_count} functions in {elapsed:.1f}s")
 
     progress_store.update_sync(
         session_id,
         status="done",
         parsed_files=len(parsed),
         total_files=total,
+        function_count=function_count,
     )

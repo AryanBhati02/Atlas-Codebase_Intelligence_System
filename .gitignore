@@ -1,48 +1,101 @@
-# Dependencies
-node_modules/
-__pycache__/
-*.pyc
-.venv/
-venv/
-env/
+# ========================
+# Root / General
+# ========================
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
 
-# Build output
-dist/
-build/
-frontend/dist/
-*.egg-info/
-frontend/tsconfig.tsbuildinfo
-
-# IDE
-.vscode/
+# IDEs and Editors
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
 
-# Environment
+# Environment variables
 .env
 .env.local
-.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.key
 
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Runtime & Sessions
-backend/sessions/
-backend/*.db
-backend/*.sqlite
-
-# Logs & Temp
+# Logs & Temp files
 *.log
 logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.tmp
 *.cache
 *.bak
-frontend/build_errors.txt
 
-# Coverage
+# ========================
+# Python / Backend
+# ========================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Testing / Coverage
 htmlcov/
+.tox/
+.nox/
 .coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# Databases & Runtime Data
+*.sqlite
+*.sqlite3
+*.db
+sessions/
+
+# Machine Learning Training Output
+backend/training/data/
+backend/training/checkpoints/
+backend/training/*.json
+*.pt
+
+# ========================
+# Node / Frontend
+# ========================
+# Dependencies
+node_modules/
+
+# Production build
+frontend/dist/
+frontend/build/
+.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# Build errors
+frontend/build_errors.txt

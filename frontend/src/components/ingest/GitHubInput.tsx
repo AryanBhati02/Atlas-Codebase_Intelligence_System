@@ -48,7 +48,7 @@ export function GitHubInput() {
       }
 
       if (err && typeof err === "object" && "response" in err) {
-        // Server responded with an error status
+        
         const axiosErr = err as { response?: { status?: number; data?: { detail?: string } } };
         const status = axiosErr.response?.status;
         const detail = axiosErr.response?.data?.detail;
@@ -67,7 +67,7 @@ export function GitHubInput() {
           setError(`Server error (${status ?? "unknown"}). Please try again.`);
         }
       } else if (err && typeof err === "object" && "request" in err) {
-        // Request was made but no response received (network failure)
+        
         setError("Cannot reach the server. Is the backend running on port 8000?");
       } else if (
         err instanceof Error &&

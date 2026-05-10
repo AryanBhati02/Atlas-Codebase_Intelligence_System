@@ -1,14 +1,17 @@
 import { client } from "./client";
+import type { AxiosRequestConfig } from "axios";
 import type { IngestResponse } from "../types";
 
 export async function ingestGitHub(url: string, signal?: AbortSignal): Promise<IngestResponse> {
+  const config: AxiosRequestConfig = { timeout: 0 };
+  if (signal) {
+    config.signal = signal;
+  }
+
   const response = await client.post<IngestResponse>(
     "/api/ingest/github",
     { url },
-    {
-      signal,
-      timeout: 0,
-    }
+    config
   );
   return response.data;
 }

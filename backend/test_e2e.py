@@ -2,10 +2,15 @@ import sys
 import logging
 from fastapi.testclient import TestClient
 import warnings
+from pathlib import Path
 
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
-sys.path.insert(0, ".")
+BACKEND_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BACKEND_DIR.parent
+sys.path.insert(0, str(ROOT_DIR))
+sys.path.insert(0, str(BACKEND_DIR))
+
 from main import app
 
 client = TestClient(app)

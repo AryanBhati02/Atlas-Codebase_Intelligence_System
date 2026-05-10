@@ -379,7 +379,7 @@ def _build_beginner_guide(repo_name: str, parsed_files: list[dict], repo_dir: Pa
     for f in parsed_files:
         lang = f.get("language") or "Other"
         lang_counts[lang] = lang_counts.get(lang, 0) + 1
-    primary_lang = max(lang_counts, key=lang_counts.get) if lang_counts else "Unknown"
+    primary_lang = max(lang_counts, key=lambda lang: lang_counts[lang]) if lang_counts else "Unknown"
 
     dirs: set[str] = set()
     dir_file_counts: dict[str, int] = {}

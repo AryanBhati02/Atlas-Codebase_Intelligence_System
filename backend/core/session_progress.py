@@ -12,7 +12,7 @@ logger = logging.getLogger("codebase-intel.progress")
 
 _VALID_STATUSES = frozenset({
     "queued", "cloning", "extracting", "scanning",
-    "parsing", "scoring", "graph", "saving", "done", "error",
+    "parsing", "scoring", "graph", "saving", "function_graph", "done", "error",
 })
 
 @dataclass
@@ -22,6 +22,7 @@ class ProgressEntry:
     parsed_files: int = 0
     partial_nodes: list = field(default_factory=list)
     partial_edges: list = field(default_factory=list)
+    function_count: int = 0
     error_message: str = ""
 
     def as_legacy_dict(self) -> dict:
@@ -30,6 +31,7 @@ class ProgressEntry:
             "current": self.parsed_files,
             "total": self.total_files,
             "done": self.status == "done",
+            "function_count": self.function_count,
             "error": self.error_message or None,
         }
 
@@ -49,6 +51,7 @@ class ProgressEntry:
             "status": self.status,
             "partial_nodes": self.partial_nodes,
             "partial_edges": self.partial_edges,
+            "function_count": self.function_count,
             "error": self.error_message or None,
         }
 

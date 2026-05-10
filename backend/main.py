@@ -18,6 +18,7 @@ from api.routes.advanced_ai import router as advanced_ai_router
 from api.routes.git import router as git_router
 from api.routes.collaboration import router as collab_router
 from api.routes.progress import router as progress_router
+from api.routes.function_graph import router as function_graph_router
 
 logger = get_logger("atlas.main")
 
@@ -78,6 +79,7 @@ app.include_router(advanced_ai_router, prefix="/api")
 app.include_router(git_router, prefix="/api")
 app.include_router(collab_router, prefix="/api")
 app.include_router(progress_router, prefix="/api")
+app.include_router(function_graph_router, prefix="/api")
 
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:

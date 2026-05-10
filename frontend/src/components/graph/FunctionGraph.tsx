@@ -90,10 +90,10 @@ export function FunctionGraph() {
     showDeadCode,
   } = useAppStore();
 
-  // Use the store directly so close only flips the visibility flag —
-  // it does NOT wipe functionGraphData/functionGraphFile, which would
-  // cause the ErrorBoundary or AnimatePresence teardown to run with
-  // null data and potentially crash the parent graph view.
+  
+  
+  
+  
   const toggleFunctionGraph = useGraphStore((s) => s.toggleFunctionGraph);
 
   const deadFunctionNames = useMemo(() => {
@@ -161,9 +161,9 @@ export function FunctionGraph() {
   useEffect(() => { setNodes(rfNodes); }, [rfNodes, setNodes]);
   useEffect(() => { setEdges(rfEdges); }, [rfEdges, setEdges]);
 
-  // Close only hides the panel — keeps functionGraphData intact so the
-  // next open is instant and so the AnimatePresence exit animation runs
-  // without accessing null state.
+  
+  
+  
   const handleClose = useCallback(() => {
     try {
       toggleFunctionGraph();
@@ -185,7 +185,7 @@ export function FunctionGraph() {
     []
   );
 
-  // On error boundary reset, just hide the panel — same safe approach.
+  
   const handleBoundaryReset = useCallback(() => {
     try {
       toggleFunctionGraph();
@@ -204,9 +204,7 @@ export function FunctionGraph() {
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className="fn-graph-panel"
         >
-          {/* ErrorBoundary is inside the conditional so its full-height
-              fallback renders only within the FunctionGraph panel, not
-              as a sibling overlay that covers the main 2D ReactFlow graph. */}
+          {}
           <ErrorBoundary onReset={handleBoundaryReset}>
             <div className="flex items-center justify-between px-4 py-2.5
               border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>

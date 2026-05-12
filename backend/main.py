@@ -19,6 +19,7 @@ from api.routes.git import router as git_router
 from api.routes.collaboration import router as collab_router
 from api.routes.progress import router as progress_router
 from api.routes.function_graph import router as function_graph_router
+from api.routes.search import router as search_router
 
 logger = get_logger("atlas.main")
 
@@ -29,6 +30,16 @@ async def lifespan(app: FastAPI):
     cleaned = cleanup_expired_sessions()
     if cleaned:
         logger.info("Expired sessions cleaned", extra={"count": cleaned})
+
+    # Pre-warm the retriever singleton so the first search request is instant
+    try:
+        import asyncio
+        from core.retrieval.retriever_factory import get_retriever
+        await asyncio.to_thread(get_retriever)
+        logger.info("AgenticRetriever pre-warmed successfully")
+    except Exception as exc:
+        logger.warning(f"AgenticRetriever pre-warm skipped (index not yet built?): {exc}")
+
     yield
     from core.ai.free_api import async_cleanup
     await async_cleanup()
@@ -80,6 +91,7 @@ app.include_router(git_router, prefix="/api")
 app.include_router(collab_router, prefix="/api")
 app.include_router(progress_router, prefix="/api")
 app.include_router(function_graph_router, prefix="/api")
+app.include_router(search_router)
 
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:

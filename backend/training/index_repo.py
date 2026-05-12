@@ -163,7 +163,7 @@ def main() -> None:
         logger.info("Extracting git co-edit data ...")
         try:
             extractor = GitCoEditExtractor(str(repo_path))
-            coedit_data = extractor.get_function_coedits(call_graph)
+            coedit_data = extractor.get_function_coedits(list(call_graph.nodes()))
             logger.info(f"Extracted {len(coedit_data)} co-edit pairs")
         except Exception as exc:
             logger.warning(f"Git co-edit extraction failed (non-fatal): {exc}")

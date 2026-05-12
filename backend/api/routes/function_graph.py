@@ -58,12 +58,6 @@ def _load_function_graph(session_id: str) -> dict:
             },
         )
 
-
-
-
-
-
-
 @router.get("/{session_id}/function-graph")
 async def get_function_graph(session_id: str) -> JSONResponse:
     """
@@ -103,12 +97,6 @@ async def get_function_graph(session_id: str) -> JSONResponse:
     """
     data = _load_function_graph(session_id)
     return JSONResponse(content=data)
-
-
-
-
-
-
 
 @router.get("/{session_id}/function-graph/search")
 async def search_function_graph(

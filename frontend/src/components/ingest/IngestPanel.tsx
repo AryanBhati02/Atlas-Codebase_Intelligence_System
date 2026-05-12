@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GitBranch, UploadCloud, Sparkles, Shield, BarChart3 } from "lucide-react";

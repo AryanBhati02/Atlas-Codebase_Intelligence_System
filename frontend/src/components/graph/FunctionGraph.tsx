@@ -1,4 +1,3 @@
-
 import React, { useMemo, useCallback, useEffect } from "react";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { motion, AnimatePresence } from "framer-motion";
@@ -90,10 +89,10 @@ export function FunctionGraph() {
     showDeadCode,
   } = useAppStore();
 
-  
-  
-  
-  
+
+
+
+
   const toggleFunctionGraph = useGraphStore((s) => s.toggleFunctionGraph);
 
   const deadFunctionNames = useMemo(() => {
@@ -161,9 +160,9 @@ export function FunctionGraph() {
   useEffect(() => { setNodes(rfNodes); }, [rfNodes, setNodes]);
   useEffect(() => { setEdges(rfEdges); }, [rfEdges, setEdges]);
 
-  
-  
-  
+
+
+
   const handleClose = useCallback(() => {
     try {
       toggleFunctionGraph();
@@ -185,7 +184,7 @@ export function FunctionGraph() {
     []
   );
 
-  
+
   const handleBoundaryReset = useCallback(() => {
     try {
       toggleFunctionGraph();
@@ -204,7 +203,7 @@ export function FunctionGraph() {
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className="fn-graph-panel"
         >
-          {}
+          { }
           <ErrorBoundary onReset={handleBoundaryReset}>
             <div className="flex items-center justify-between px-4 py-2.5
               border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>

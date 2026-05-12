@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import logging
@@ -91,9 +90,6 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
         (session_dir / "graph.json").write_text, graph_json, "utf-8"
     )
     _check_timeout()
-
-    
-    
     
     function_count = 0
     try:

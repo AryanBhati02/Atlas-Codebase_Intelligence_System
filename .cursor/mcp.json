@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "atlas": {
+      "command": "python",
+      "args": ["backend/api/mcp_server.py"],
+      "env": {
+        "PYTHONPATH": "backend"
+      }
+    }
+  }
+}

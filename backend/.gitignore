@@ -1,59 +1,38 @@
-sessions/
+
 __pycache__/
 *.pyc
-.venv/
-venv/
-.env
-
-
-# Dependencies
-node_modules/
-__pycache__/
-*.pyc
+*.pyo
 .venv/
 venv/
 env/
 
-# Build output
-frontend/dist/
 dist/
 build/
 *.egg-info/
 .vite/
 
-# IDE
+.env
+.env.local
+.env.*.local
+*.key
+
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Environment
-.env
-.env.local
-.env.*.local
-*.key
-
-# OS
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Sessions (generated at runtime)
-backend/sessions/
 sessions/
+*.db
+*.sqlite
 
-# Database (generated at runtime)
-backend/*.db
-backend/*.sqlite
-
-# Logs
 *.log
-
-# Coverage
 htmlcov/
 .coverage
 
-# Misc
 *.bak
 *.tmp

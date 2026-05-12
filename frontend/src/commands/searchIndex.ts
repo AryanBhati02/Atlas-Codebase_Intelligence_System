@@ -1,11 +1,10 @@
-
 import type { Command } from "./registry";
 
 interface IndexEntry {
   command: Command;
-  tokens: string[];       
-  labelLower: string;     
-  descLower: string;      
+  tokens: string[];
+  labelLower: string;
+  descLower: string;
 }
 
 export class SearchIndex {
@@ -40,7 +39,7 @@ export class SearchIndex {
 
   search(query: string, limit: number = 20): Command[] {
     if (!query.trim()) {
-      
+
       return this.entries
         .filter((e) => !e.command.id.startsWith("file:") && !e.command.id.startsWith("fn:"))
         .slice(0, limit)
@@ -58,11 +57,11 @@ export class SearchIndex {
       if (entry.labelLower === q) {
         score += 100;
       }
-      
+
       else if (entry.labelLower.startsWith(q)) {
         score += 60;
       }
-      
+
       else if (entry.labelLower.includes(q)) {
         score += 40;
       }
@@ -121,7 +120,7 @@ function fuzzyMatch(query: string, target: string): number {
     if (target[ti] === query[qi]) {
       qi++;
       consecutive++;
-      score += consecutive; 
+      score += consecutive;
     } else {
       consecutive = 0;
     }

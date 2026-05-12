@@ -1,4 +1,3 @@
-
 import axios from "axios";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { useSessionStore } from "../store/sessionStore";
@@ -42,7 +41,7 @@ client.interceptors.response.use(
     const config = error.config;
 
     if (status === 401) {
-      
+
       try {
         const [{ useSettingsStore }, { useUiStore }] = await Promise.all([
           import("../store/settingsStore"),
@@ -51,7 +50,7 @@ client.interceptors.response.use(
         useSettingsStore.getState().clearApiKeys();
         useUiStore.getState().setSettingsPanelOpen(true);
       } catch {
-        
+
       }
       return Promise.reject(error);
     }

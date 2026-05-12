@@ -1,4 +1,3 @@
-
 import re
 
 _IMPORT_PATTERNS = [

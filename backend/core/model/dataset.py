@@ -45,12 +45,6 @@ from torch.utils.data import Dataset
 from torch_geometric.data import Batch, Data
 
 logger = logging.getLogger("codebase-intel.dataset")
-
-
-
-
-
-
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s\w]")
 
 
@@ -127,12 +121,6 @@ class Vocabulary:
         logger.info(f"Built vocabulary: {vocab.size} tokens from {len(code_samples)} samples.")
         return vocab
 
-
-
-
-
-
-
 def create_token_graph(
     token_ids: List[int],
     window_size: int = 5,
@@ -172,12 +160,6 @@ def create_token_graph(
     edge_index = torch.tensor([src, dst], dtype=torch.long)
     edge_attr  = torch.ones(edge_index.shape[1], 1, dtype=torch.float)
     return edge_index, edge_attr
-
-
-
-
-
-
 
 def _extract_intent_verb(docstring: str) -> str:
     """
@@ -246,12 +228,6 @@ def build_pairs_from_codesearchnet(
     )
     return pairs[:max_pairs]
 
-
-
-
-
-
-
 class FunctionPairDataset(Dataset):
     """
     PyTorch Dataset that yields positive (Data, Data) pairs for contrastive
@@ -306,10 +282,6 @@ class FunctionPairDataset(Dataset):
             f"vocab_size={self.vocab.size}, max_seq_len={max_seq_len}"
         )
 
-    
-    
-    
-
     def __len__(self) -> int:
         return len(self.pairs)
 
@@ -330,10 +302,6 @@ class FunctionPairDataset(Dataset):
         data_b = self._make_graph(code_b)
         return data_a, data_b
 
-    
-    
-    
-
     def _make_graph(self, code: str) -> Data:
         """
         Turn a raw source-code string into a PyG Data object.
@@ -347,12 +315,6 @@ class FunctionPairDataset(Dataset):
         edge_index, edge_attr = create_token_graph(token_ids, window_size=5)
 
         return Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
-
-
-
-
-
-
 
 def collate_pairs(
     batch: List[Tuple[Data, Data]],

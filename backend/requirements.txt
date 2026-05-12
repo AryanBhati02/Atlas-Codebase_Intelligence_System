@@ -7,14 +7,12 @@ httpx==0.28.1
 celery==5.3.4
 redis==5.0.1
 
-# Week 1 — tree-sitter call graph
 tree-sitter==0.21.3
 tree-sitter-python==0.21.0
 tree-sitter-javascript==0.21.4
 tree-sitter-typescript==0.21.2
 networkx==3.3
 
-# Week 2-3 — GATv2 model + contrastive training
 # NOTE: Install PyTorch with CUDA 11.8 support FIRST (before the rest):
 #   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 # Then install torch-geometric:

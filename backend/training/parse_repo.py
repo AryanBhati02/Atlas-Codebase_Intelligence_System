@@ -39,12 +39,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("atlas.parse_repo")
 
-
-
-
-
-
-
 def _clone_repo(url: str, target_dir: str) -> None:
     """Shallow-clone *url* into *target_dir* using git."""
     logger.info(f"Cloning {url} …")
@@ -70,12 +64,6 @@ def _fmt_table(rows: list[tuple], headers: tuple, col_widths: tuple) -> str:
         lines.append(sep.join(str(v).ljust(w) for v, w in zip(row, col_widths)))
     return "\n".join(lines)
 
-
-
-
-
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Parse a repository into a function-level call graph."
@@ -98,9 +86,6 @@ def main() -> None:
         output_path.stem + "_pyg" + output_path.suffix
     )
 
-    
-    
-    
     tmp_dir: str | None = None
     repo_path: str
 
@@ -120,9 +105,6 @@ def main() -> None:
             logger.error(f"Path does not exist or is not a directory: {repo_path}")
             sys.exit(1)
 
-    
-    
-    
     try:
         ts_parser = TreeSitterParser()
         logger.info(f"Parsing repository: {repo_path}")
@@ -157,9 +139,6 @@ def main() -> None:
 
         graph = FusionEngine().fuse(graph, coedit_data)
 
-        
-        
-        
         print()
         print(f"Parsed {len(nodes)} functions across {unique_files} files")
         print(f"Call graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
@@ -212,9 +191,6 @@ def main() -> None:
         print(_fmt_table(rows_fo, ("Name", "File", "Fan-out"), (45, 55, 8)))
         print()
 
-        
-        
-        
         graph_json = graph_to_json(graph)
         pyg_data = graph_to_pyg_data(graph)
 

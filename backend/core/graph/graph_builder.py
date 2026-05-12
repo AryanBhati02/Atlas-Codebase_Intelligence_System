@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 def _build_basename_index(all_paths: set[str]) -> dict[str, list[str]]:

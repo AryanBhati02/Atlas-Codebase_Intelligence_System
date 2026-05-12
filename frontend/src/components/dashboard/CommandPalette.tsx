@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -115,7 +114,7 @@ export function CommandPalette() {
     if (isOpen) {
       setQuery("");
       setActiveIndex(0);
-      
+
       requestAnimationFrame(() => {
         inputRef.current?.focus();
       });
@@ -148,12 +147,12 @@ export function CommandPalette() {
             try {
               const content = await getFileContent(s.sessionId, path);
               s.setFileContent(content);
-            } catch {  }
+            } catch { }
             try {
               s.setAILoading(true);
               const ai = await explainFile(s.sessionId, path);
               s.setAIExplanation(ai.explanation, ai.source);
-            } catch {  } finally {
+            } catch { } finally {
               s.setAILoading(false);
             }
           }
@@ -209,7 +208,7 @@ export function CommandPalette() {
     <AnimatePresence>
       {isOpen && (
         <>
-          {}
+          { }
           <motion.div
             className="cmd-backdrop"
             initial={{ opacity: 0 }}
@@ -219,7 +218,7 @@ export function CommandPalette() {
             onClick={() => setIsOpen(false)}
           />
 
-          {}
+          { }
           <motion.div
             className="cmd-palette"
             initial={{ opacity: 0, scale: 0.96, y: -20 }}
@@ -230,7 +229,7 @@ export function CommandPalette() {
               ease: [0.22, 0.61, 0.36, 1],
             }}
           >
-            {}
+            { }
             <div className="cmd-input-wrap">
               <Search className="cmd-input-icon" />
               <input
@@ -246,10 +245,10 @@ export function CommandPalette() {
               <kbd className="cmd-kbd">ESC</kbd>
             </div>
 
-            {}
+            { }
             <div className="cmd-divider" />
 
-            {}
+            { }
             <div className="cmd-results" ref={listRef}>
               {results.length === 0 ? (
                 <div className="cmd-empty">
@@ -308,7 +307,7 @@ export function CommandPalette() {
               )}
             </div>
 
-            {}
+            { }
             <div className="cmd-footer">
               <div className="cmd-footer-hint">
                 <ArrowUp className="w-3 h-3" />

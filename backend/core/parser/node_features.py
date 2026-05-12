@@ -16,11 +16,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .tree_sitter_parser import FunctionNode
 
-
-
-
-
-
 _CAMEL_SPLIT_RE = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _NON_ALPHA_RE = re.compile(r"[^a-z0-9]+")
 
@@ -53,12 +48,6 @@ def _tokenize_body_sample(text: str, max_tokens: int = 50) -> list[str]:
     for raw in raw_tokens:
         out.extend(tokenize_name(raw))
     return out
-
-
-
-
-
-
 
 class Vocabulary:
     """Token-to-integer index vocabulary for function names and bodies."""

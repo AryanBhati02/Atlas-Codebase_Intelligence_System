@@ -54,11 +54,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("train_gatv2")
 
-
-
-
-
-
 def _get_amp_tools(device_type: str = "cuda"):
     """
     Return (autocast_cls, GradScaler) using the correct API for the installed
@@ -90,12 +85,6 @@ def _get_amp_tools(device_type: str = "cuda"):
         logger.info(f"Using torch.cuda.amp (PyTorch {torch.__version__})")
 
     return autocast, scaler
-
-
-
-
-
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -138,12 +127,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
-
-
-
-
-
 def main() -> None:
     args = parse_args()
 
@@ -171,8 +154,6 @@ def main() -> None:
     
     autocast, scaler = _get_amp_tools(device.type)
 
-    
-    
     
     from core.model.dataset import FunctionPairDataset, collate_pairs  
 
@@ -209,9 +190,6 @@ def main() -> None:
             "training data, because fusion weights are only available for real repo graphs."
         )
 
-    
-    
-    
     from core.model.dataset import Vocabulary  
     from core.model.function_encoder import FunctionEncoder, infonce_loss  
 
@@ -230,9 +208,6 @@ def main() -> None:
         f"{sum(p.numel() for p in model.parameters()):,} parameters"
     )
 
-    
-    
-    
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.lr,
@@ -244,9 +219,6 @@ def main() -> None:
         eta_min=1e-6,
     )
 
-    
-    
-    
     start_epoch = 1
     best_loss   = float("inf")
     epoch_losses: list[dict] = []
@@ -264,8 +236,6 @@ def main() -> None:
         else:
             logger.warning(f"Checkpoint not found: {resume_path}; starting fresh.")
 
-    
-    
     
     train_start = time.time()
 
@@ -375,9 +345,6 @@ def main() -> None:
                 },
                 best_path,
             )
-
-    
-    
     
     total_time = time.time() - train_start
     if device.type == "cuda":

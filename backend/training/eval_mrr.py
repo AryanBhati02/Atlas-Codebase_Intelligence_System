@@ -58,12 +58,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("eval_mrr")
 
-
-
-
-
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Evaluate GATv2 encoder with MRR@10 on CodeSearchNet Python test split."
@@ -104,12 +98,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
-
-
-
-
-
 import re as _re
 
 _TOKEN_RE_EVAL = _re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s\w]")
@@ -137,12 +125,6 @@ def _docstring_overlap(doc_a: str, doc_b: str) -> int:
     words_a = set(doc_a.lower().split())
     words_b = set(doc_b.lower().split())
     return len(words_a & words_b)
-
-
-
-
-
-
 
 def embed_functions(
     model,
@@ -186,12 +168,6 @@ def embed_functions(
 
     return torch.cat(all_embeddings, dim=0)  
 
-
-
-
-
-
-
 def main() -> None:
     args = parse_args()
     rng = random.Random(args.seed)
@@ -207,9 +183,6 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Evaluating on {device}")
 
-    
-    
-    
     from core.model.dataset import Vocabulary  
 
     if not os.path.isfile(vocab_path):
@@ -218,9 +191,6 @@ def main() -> None:
     vocab = Vocabulary.from_file(vocab_path)
     logger.info(f"Vocabulary loaded: {vocab.size} tokens")
 
-    
-    
-    
     from core.model.function_encoder import FunctionEncoder  
 
     if not os.path.isfile(ckpt_path):
@@ -246,9 +216,6 @@ def main() -> None:
         f"loss {ckpt.get('loss', float('nan')):.4f})"
     )
 
-    
-    
-    
     try:
         from datasets import load_from_disk, load_dataset  
     except ImportError:
@@ -278,9 +245,6 @@ def main() -> None:
             logger.error(f"Failed to download dataset: {exc}")
             sys.exit(1)
 
-    
-    
-    
     total_examples = len(test_dataset)
     n_samples = min(args.n_samples, total_examples)
     sample_indices = rng.sample(range(total_examples), n_samples)
@@ -289,9 +253,6 @@ def main() -> None:
     sample_codes      = [_dataset_text(test_dataset, i, "whole_func_string") for i in sample_indices]
     sample_docstrings = [_dataset_text(test_dataset, i, "func_documentation_string") for i in sample_indices]
 
-    
-    
-    
     sample_verbs = [_intent_verb(doc) for doc in sample_docstrings]
 
     
@@ -300,8 +261,6 @@ def main() -> None:
         if verb:
             verb_to_positions[verb].append(pos)
 
-    
-    
     query_to_positive: dict[int, int] = {}
     for verb, positions in verb_to_positions.items():
         if len(positions) < 2:
@@ -331,17 +290,12 @@ def main() -> None:
         sys.exit(1)
 
     
-    
-    
     logger.info("Computing embeddings for all sampled functions …")
     embeddings = embed_functions(
         model, vocab, sample_codes, device,
         batch_size=args.batch_size, max_seq_len=64,
     )   
 
-    
-    
-    
     logger.info("Computing MRR@10 …")
 
     reciprocal_ranks: list[float] = []
@@ -349,8 +303,6 @@ def main() -> None:
     hits_at_5  = 0
     hits_at_10 = 0
 
-    
-    
     emb_norm = torch.nn.functional.normalize(embeddings, dim=-1)   
 
     for q_pos in eligible_queries:
@@ -384,9 +336,6 @@ def main() -> None:
     hits5     = hits_at_5  / n_queries
     hits10    = hits_at_10 / n_queries
 
-    
-    
-    
     print()
     print("=" * 55)
     print(f"  MRR@10 Evaluation Results")
@@ -397,9 +346,6 @@ def main() -> None:
     print(f"  Rank 10 accuracy (Hits@10) : {hits10:.2%}")
     print("=" * 55)
 
-    
-    
-    
     results = {
         "checkpoint": ckpt_path,
         "n_samples_evaluated": n_queries,

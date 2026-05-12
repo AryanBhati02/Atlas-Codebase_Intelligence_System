@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException, Query
 from models.schemas import FileContentResponse
 from core.ingest.file_filter import detect_language

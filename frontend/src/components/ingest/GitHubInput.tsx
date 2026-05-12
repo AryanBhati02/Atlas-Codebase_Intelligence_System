@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { GitBranch, Loader2, ArrowRight, AlertCircle } from "lucide-react";
@@ -48,7 +47,7 @@ export function GitHubInput() {
       }
 
       if (err && typeof err === "object" && "response" in err) {
-        
+
         const axiosErr = err as { response?: { status?: number; data?: { detail?: string } } };
         const status = axiosErr.response?.status;
         const detail = axiosErr.response?.data?.detail;
@@ -67,7 +66,7 @@ export function GitHubInput() {
           setError(`Server error (${status ?? "unknown"}). Please try again.`);
         }
       } else if (err && typeof err === "object" && "request" in err) {
-        
+
         setError("Cannot reach the server. Is the backend running on port 8000?");
       } else if (
         err instanceof Error &&

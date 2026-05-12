@@ -22,9 +22,6 @@ from typing import Any, Optional
 
 logger = logging.getLogger("codebase-intel.tree_sitter_parser")
 
-
-
-
 Language: Any = None
 TSParser: Any = None
 _tspython: Any = None
@@ -63,12 +60,6 @@ except ImportError:
     _TS_LANG_AVAILABLE = False
     logger.warning("tree-sitter-typescript not installed.")
 
-
-
-
-
-
-
 @dataclass
 class FunctionNode:
     """Represents a single function or method extracted from source code."""
@@ -85,11 +76,6 @@ class FunctionNode:
     calls_to: list[str] = field(default_factory=list)
     complexity: int = 1
     body_text: str = ""
-
-
-
-
-
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
@@ -143,12 +129,6 @@ _JS_BRANCH_TYPES: frozenset[str] = frozenset(
         "conditional_expression",
     }
 )
-
-
-
-
-
-
 
 def _node_text(node) -> str:
     """Return the decoded UTF-8 text of a tree-sitter node."""
@@ -271,12 +251,6 @@ def _resolve_callee_name(callee_node) -> str:
     text = _node_text(callee_node)
     return text.split(".")[-1] if "." in text else text
 
-
-
-
-
-
-
 class TreeSitterParser:
     """
     Parse Python, JavaScript, and TypeScript files into FunctionNode objects
@@ -317,8 +291,6 @@ class TreeSitterParser:
             except Exception as exc:
                 logger.warning(f"Failed to load tree-sitter JavaScript: {exc}")
 
-        
-        
         if _TS_LANG_AVAILABLE and _tstypescript is not None:
             try:
                 ts_lang = _make_language(_tstypescript.language_typescript, "typescript")
@@ -336,10 +308,6 @@ class TreeSitterParser:
                 logger.info("tree-sitter TypeScript/TSX language loaded.")
             except Exception as exc:
                 logger.warning(f"Failed to load tree-sitter TypeScript: {exc}")
-
-    
-    
-    
 
     def parse_file(self, file_path: str, content: str, language: str) -> list[FunctionNode]:
         """
@@ -447,10 +415,6 @@ class TreeSitterParser:
             f"Repository parse complete: {file_count} files → {len(all_nodes)} functions."
         )
         return all_nodes
-
-    
-    
-    
 
     def _extract_python_functions(
         self, root_node, file_path: str, content: str
@@ -695,12 +659,6 @@ class TreeSitterParser:
 
         _collect(root_node)
         return nodes
-
-
-
-
-
-
 
 def _extract_py_params(params_node) -> list[str]:
     if params_node is None:

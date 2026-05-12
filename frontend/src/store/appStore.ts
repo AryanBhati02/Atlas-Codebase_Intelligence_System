@@ -1,4 +1,3 @@
-
 export { useSessionStore } from "./sessionStore";
 export { useGraphStore } from "./graphStore";
 export { useAiStore } from "./aiStore";
@@ -31,7 +30,7 @@ export function useAppStore() {
   const ui = useUiStore();
 
   return {
-    
+
     sessionId: session.sessionId,
     status: session.status,
     progress: session.progress,
@@ -59,7 +58,7 @@ export function useAppStore() {
     setAnalysisProgress: session.setAnalysisProgress,
     setAnalysisResult: session.setAnalysisResult,
     setFileContent: session.setFileContent,
-    
+
     setSelectedFile: (path: string | null) => {
       session.setSelectedFile(path);
     },

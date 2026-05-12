@@ -60,10 +60,6 @@ class FusionEngine:
         self.min_coedit_weight = min_coedit_weight
         self.max_coedit_edges  = max_coedit_edges
 
-    
-    
-    
-
     def fuse(
         self,
         static_graph: nx.DiGraph,
@@ -153,10 +149,6 @@ class FusionEngine:
                 call_freq_score=f_score,
             )
 
-        
-        
-        
-        
         coedit_candidates: list[tuple[float, tuple, tuple]] = []
         for (node_a, node_b), co_score in coedit_data.items():
             if co_score <= 0.0:
@@ -212,14 +204,19 @@ class FusionEngine:
         )
         return fused
 
-    
-    
-    
-
     def _annotate_nodes(self, graph: nx.DiGraph) -> None:
         """Add fan_in, fan_out, is_hot_path, coupling_score, is_isolated."""
-        fan_ins  = np.array([graph.in_degree(n) for n in graph.nodes()], dtype=float)
-        threshold = np.percentile(fan_ins, 90) if len(fan_ins) > 0 else 0.0
+        fan_ins_all = np.array([graph.in_degree(n) for n in graph.nodes()], dtype=float)
+        # Compute the threshold only from nodes that actually have callers.
+        # Using all nodes collapses the 90th percentile to 0 when most nodes
+        # are leaves (fan_in == 0), which causes is_hot_path to never fire.
+        fan_ins_nonzero = fan_ins_all[fan_ins_all > 0]
+        if len(fan_ins_nonzero) >= 10:
+            threshold = float(np.percentile(fan_ins_nonzero, 90))
+        elif len(fan_ins_nonzero) > 0:
+            threshold = float(np.max(fan_ins_nonzero) * 0.5)
+        else:
+            threshold = 1.0  # fallback: any caller makes a node hot
 
         for node in graph.nodes():
             in_deg  = graph.in_degree(node)
@@ -236,10 +233,6 @@ class FusionEngine:
             graph.nodes[node]["is_hot_path"]    = bool(in_deg >= threshold and threshold > 0)
             graph.nodes[node]["coupling_score"] = coupling
             graph.nodes[node]["is_isolated"]    = (in_deg + out_deg == 0)
-
-    
-    
-    
 
     def to_pyg_edge_weights(
         self,

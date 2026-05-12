@@ -43,10 +43,6 @@ class GitCoEditExtractor:
     def __init__(self, repo_path: str) -> None:
         self.repo_path = str(Path(repo_path).resolve())
 
-    
-    
-    
-
     def extract_coedit_matrix(
         self,
         max_commits: int = 500,
@@ -123,10 +119,6 @@ class GitCoEditExtractor:
             f"Co-edit matrix: {len(sorted_matrix)} file pairs across ≤{max_commits} commits."
         )
         return sorted_matrix
-
-    
-    
-    
 
     def get_function_coedits(
         self,

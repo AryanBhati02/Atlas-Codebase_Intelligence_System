@@ -1,7 +1,3 @@
-# ========================
-# Root / General
-# ========================
-# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -11,22 +7,20 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# IDEs and Editors
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# Environment variables
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*.local
 *.key
 
-# Logs & Temp files
 *.log
 logs/
 npm-debug.log*
@@ -36,27 +30,21 @@ yarn-error.log*
 *.cache
 *.bak
 
-# ========================
-# Python / Backend
-# ========================
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual Environments
 .venv/
 venv/
 env/
 ENV/
 
-# Distribution / packaging
 dist/
 build/
 *.egg-info/
 .eggs/
+codebase_intel.egg-info/
 
-# Testing / Coverage
 htmlcov/
 .tox/
 .nox/
@@ -71,31 +59,30 @@ coverage.xml
 .pytest_cache/
 pytestdebug.log
 
-# Databases & Runtime Data
+
 *.sqlite
 *.sqlite3
 *.db
 sessions/
+backend/sessions/
 
-# Machine Learning Training Output
 backend/training/data/
 backend/training/checkpoints/
+backend/training/checkpoints_static/
 backend/training/*.json
+backend/eval/results/
+backend/eval/results_static/
+backend/results/
 *.pt
+*.pth
+*.ckpt
+*.pkl
+*.arrow
 
-# ========================
-# Node / Frontend
-# ========================
-# Dependencies
 node_modules/
-
-# Production build
 frontend/dist/
 frontend/build/
+frontend/build_errors.txt
 .vite/
 
-# TypeScript
 *.tsbuildinfo
-
-# Build errors
-frontend/build_errors.txt

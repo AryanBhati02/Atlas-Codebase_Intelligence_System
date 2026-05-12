@@ -1,4 +1,3 @@
-
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -20,6 +19,7 @@ from api.routes.collaboration import router as collab_router
 from api.routes.progress import router as progress_router
 from api.routes.function_graph import router as function_graph_router
 from api.routes.search import router as search_router
+from api.routes.mcp_status import router as mcp_status_router
 
 logger = get_logger("atlas.main")
 
@@ -92,6 +92,7 @@ app.include_router(collab_router, prefix="/api")
 app.include_router(progress_router, prefix="/api")
 app.include_router(function_graph_router, prefix="/api")
 app.include_router(search_router)
+app.include_router(mcp_status_router)
 
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:

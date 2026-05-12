@@ -53,7 +53,7 @@ class AgenticRetriever:
 
         token_ids = self.vocab.encode(query, max_length=64)
         n = len(token_ids)
-
+        
         src = []
         dst = []
         window_size = 5
@@ -156,18 +156,20 @@ class AgenticRetriever:
             behavioral = float(
                 np.dot(query_emb, emb) / (norm_q * norm_e + 1e-8)
             )
+            # Pull metadata from graph node so file paths are populated
+            nd = self.graph.nodes.get(neighbor, {}) if self.graph.has_node(neighbor) else {}
             expanded[neighbor] = {
                 "behavioral_score": max(0.0, behavioral),
                 "textual_score": 0.0,
                 "func_id": neighbor,
-                "name": neighbor.split("::")[-1] if "::" in neighbor else neighbor,
-                "file_path": "",
-                "language": "",
-                "line_start": 0,
-                "line_end": 0,
-                "docstring": "",
-                "complexity": 0,
-                "is_hot_path": False,
+                "name": nd.get("name") or (neighbor.split("::")[-1] if "::" in neighbor else neighbor),
+                "file_path": nd.get("file_path", ""),
+                "language": nd.get("language", ""),
+                "line_start": nd.get("line_start", 0),
+                "line_end": nd.get("line_end", 0),
+                "docstring": nd.get("docstring", ""),
+                "complexity": nd.get("complexity", 0),
+                "is_hot_path": nd.get("is_hot_path", False),
                 "graph_boost": 0.05,
             }
 

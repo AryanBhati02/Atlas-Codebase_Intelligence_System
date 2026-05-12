@@ -22,12 +22,6 @@ from .tree_sitter_parser import FunctionNode
 
 logger = logging.getLogger("codebase-intel.call_graph_builder")
 
-
-
-
-
-
-
 def build_call_graph(nodes: list[FunctionNode]) -> nx.DiGraph:
     """
     Build a directed call graph from a list of FunctionNode objects.
@@ -39,9 +33,6 @@ def build_call_graph(nodes: list[FunctionNode]) -> nx.DiGraph:
     """
     graph = nx.DiGraph()
 
-    
-    
-    
     for node in nodes:
         graph.add_node(
             node.id,
@@ -60,13 +51,8 @@ def build_call_graph(nodes: list[FunctionNode]) -> nx.DiGraph:
             fan_out=0,
         )
 
-    
-    
-    
-    
     id_index: dict[str, FunctionNode] = {n.id: n for n in nodes}
 
-    
     name_index: dict[str, list[FunctionNode]] = defaultdict(list)
     short_index: dict[str, list[FunctionNode]] = defaultdict(list)
 
@@ -107,9 +93,6 @@ def build_call_graph(nodes: list[FunctionNode]) -> nx.DiGraph:
         
         return candidates[0].id
 
-    
-    
-    
     edge_count = 0
     for node in nodes:
         for called_name in node.calls_to:
@@ -123,20 +106,11 @@ def build_call_graph(nodes: list[FunctionNode]) -> nx.DiGraph:
         f"Call graph built: {graph.number_of_nodes()} nodes, {edge_count} edges resolved."
     )
 
-    
-    
-    
     for node_id in graph.nodes:
         graph.nodes[node_id]["fan_in"] = graph.in_degree(node_id)
         graph.nodes[node_id]["fan_out"] = graph.out_degree(node_id)
 
     return graph
-
-
-
-
-
-
 
 def graph_to_json(graph: nx.DiGraph) -> dict:
     """

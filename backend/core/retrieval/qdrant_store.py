@@ -247,7 +247,7 @@ class AtlasQdrantStore:
         if vec is None:
             return None
         if isinstance(vec, dict):
-            # Named vectors format — take first value
+            # Named vectors format take first value
             vec = next(iter(vec.values()), None)
         if vec is None:
             return None
@@ -279,7 +279,7 @@ class AtlasQdrantStore:
         for point in results:
             # Try payload func_id first, fall back to reverse id map
             payload = getattr(point, "payload", None) or {}
-            func_id = payload.get("func_id") or id_to_func.get(point.id)
+            func_id = payload.get("func_id") or (id_to_func.get(point.id) if isinstance(point.id, int) else None)
             if func_id is None:
                 continue
             vec = getattr(point, "vector", None)

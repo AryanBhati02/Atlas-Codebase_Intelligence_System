@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from core.ai.router import route_prompt

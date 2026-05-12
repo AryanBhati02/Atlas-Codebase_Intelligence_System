@@ -1,4 +1,3 @@
-
 import * as dagre from "dagre";
 
 interface RawNode {

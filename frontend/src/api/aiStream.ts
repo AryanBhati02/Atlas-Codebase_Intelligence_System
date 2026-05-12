@@ -1,15 +1,14 @@
-
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
 const MAX_RETRIES = 3;
 
 export interface StreamCallbacks {
-  
+
   onChunk: (text: string) => void;
-  
+
   onRefs?: (refs: Array<{ path: string; relevance_reason: string }>) => void;
-  
+
   onDone: () => void;
-  
+
   onError: (error: Error) => void;
 }
 
@@ -70,7 +69,7 @@ export function streamAI(
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
-          
+
           buffer = lines.pop() ?? "";
 
           for (const line of lines) {
@@ -97,11 +96,11 @@ export function streamAI(
               }
 
               if (typeof parsed.error === "string") {
-                
+
                 callbacks.onChunk(`\n\n*Server error: ${parsed.error}*`);
               }
             } catch {
-              
+
             }
           }
         }
@@ -119,7 +118,7 @@ export function streamAI(
           callbacks.onError(err instanceof Error ? err : new Error(String(err)));
           return;
         }
-        
+
         await new Promise<void>((r) => setTimeout(r, 600 * attempt));
       }
     }

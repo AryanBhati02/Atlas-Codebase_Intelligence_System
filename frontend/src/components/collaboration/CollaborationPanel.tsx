@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -67,7 +66,7 @@ export function CollaborationPanel() {
       try {
         const data = await getCommentCounts(sessionId);
         if (!cancelled) setCommentCounts(data.counts);
-      } catch {  }
+      } catch { }
     })();
     return () => { cancelled = true; };
   }, [sessionId, setCommentCounts]);
@@ -82,7 +81,7 @@ export function CollaborationPanel() {
       addComment(comment);
       setMessage("");
       inputRef.current?.focus();
-    } catch {  }
+    } catch { }
     finally { setIsSending(false); }
   }, [sessionId, selectedFile, message, author, addComment]);
 
@@ -91,15 +90,15 @@ export function CollaborationPanel() {
     try {
       const updated = await apiResolveComment(sessionId, commentId);
       updateComment(updated);
-    } catch {  }
+    } catch { }
   }, [sessionId, updateComment]);
 
   const handleDelete = useCallback(async (commentId: string) => {
     if (!sessionId) return;
-    removeComment(commentId); 
+    removeComment(commentId);
     try {
       await apiDeleteComment(sessionId, commentId);
-    } catch {  }
+    } catch { }
   }, [sessionId, removeComment]);
 
   const handleShare = useCallback(async () => {
@@ -108,7 +107,7 @@ export function CollaborationPanel() {
       const data = await getShareToken(sessionId);
       const url = `${window.location.origin}${data.share_url}`;
       setShareUrl(url);
-    } catch {  }
+    } catch { }
   }, [sessionId]);
 
   const handleCopy = useCallback(() => {
@@ -141,7 +140,7 @@ export function CollaborationPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {}
+      { }
       <div
         className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.04] cursor-pointer
           hover:bg-white/[0.01] transition-colors"
@@ -161,7 +160,7 @@ export function CollaborationPanel() {
           {fileName}
         </span>
 
-        {}
+        { }
         <button
           onClick={(e) => { e.stopPropagation(); handleShare(); }}
           className="p-1 rounded hover:bg-white/[0.04] text-slate-600 hover:text-accent-cyan transition-colors"
@@ -177,7 +176,7 @@ export function CollaborationPanel() {
         )}
       </div>
 
-      {}
+      { }
       <AnimatePresence>
         {shareUrl && (
           <motion.div
@@ -220,7 +219,7 @@ export function CollaborationPanel() {
             transition={{ duration: 0.2 }}
             className="flex-1 flex flex-col overflow-hidden"
           >
-            {}
+            { }
             <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
               {isCommentsLoading ? (
                 <div className="flex items-center gap-2 py-4 justify-center">
@@ -244,7 +243,7 @@ export function CollaborationPanel() {
                         : "bg-white/[0.02] hover:bg-white/[0.03]"
                       } border border-white/[0.03]`}
                   >
-                    {}
+                    { }
                     <div className="flex items-center gap-1.5 mb-1">
                       <div className="w-4 h-4 rounded-full bg-accent-purple/15 flex items-center
                         justify-center shrink-0">
@@ -260,13 +259,13 @@ export function CollaborationPanel() {
                       </span>
                     </div>
 
-                    {}
+                    { }
                     <p className={`text-[10px] leading-relaxed ml-5.5
                       ${c.resolved ? "text-slate-600 line-through" : "text-slate-300"}`}>
                       {c.message}
                     </p>
 
-                    {}
+                    { }
                     <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5
                       opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
@@ -290,9 +289,9 @@ export function CollaborationPanel() {
               )}
             </div>
 
-            {}
+            { }
             <div className="px-3 py-2 border-t border-white/[0.04]">
-              {}
+              { }
               <div className="flex items-center gap-1 mb-1.5">
                 <span className="text-[8px] text-slate-700">As:</span>
                 <input
@@ -305,7 +304,7 @@ export function CollaborationPanel() {
                 />
               </div>
 
-              {}
+              { }
               <div className="flex items-end gap-1.5">
                 <textarea
                   ref={inputRef}

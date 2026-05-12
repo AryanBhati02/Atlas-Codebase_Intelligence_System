@@ -1,4 +1,3 @@
-
 export type CommandCategory =
   | "navigation"
   | "graph"
@@ -14,19 +13,19 @@ export interface Command {
   label: string;
   description: string;
   keywords: string[];
-  icon: string; 
+  icon: string;
   shortcut?: string;
   execute: (ctx: CommandContext) => void;
 }
 
 export interface CommandContext {
-  store: any; 
+  store: any;
   selectFile: (path: string) => void;
   focusNode: (nodeId: string) => void;
 }
 
 const STATIC_COMMANDS: Command[] = [
-  
+
   {
     id: "nav:new-session",
     category: "navigation",
@@ -64,7 +63,7 @@ const STATIC_COMMANDS: Command[] = [
     keywords: ["heatmap", "complexity", "heat", "color", "warm"],
     icon: "Flame",
     execute: () => {
-      
+
       window.dispatchEvent(new CustomEvent("cmd:toggle-heatmap"));
     },
   },
@@ -122,7 +121,7 @@ const STATIC_COMMANDS: Command[] = [
     keywords: ["ai", "explain", "insight", "intelligence", "analysis"],
     icon: "Brain",
     execute: () => {
-      
+
       window.dispatchEvent(new CustomEvent("cmd:show-ai-tab", { detail: "explain" }));
     },
   },
@@ -253,12 +252,12 @@ const STATIC_COMMANDS: Command[] = [
 
 export const CATEGORY_META: Record<CommandCategory, { label: string; color: string }> = {
   navigation: { label: "Navigation", color: "#f6c445" },
-  graph:      { label: "Graph",      color: "#7c6ee0" },
-  ai:         { label: "AI",         color: "#22d3ee" },
-  analysis:   { label: "Analysis",   color: "#8b5cf6" },
-  view:       { label: "View",       color: "#3b82f6" },
-  settings:   { label: "Settings",   color: "#94a3b8" },
-  git:        { label: "Git",        color: "#10b981" },
+  graph: { label: "Graph", color: "#7c6ee0" },
+  ai: { label: "AI", color: "#22d3ee" },
+  analysis: { label: "Analysis", color: "#8b5cf6" },
+  view: { label: "View", color: "#3b82f6" },
+  settings: { label: "Settings", color: "#94a3b8" },
+  git: { label: "Git", color: "#10b981" },
 };
 
 let _commands: Command[] = [...STATIC_COMMANDS];

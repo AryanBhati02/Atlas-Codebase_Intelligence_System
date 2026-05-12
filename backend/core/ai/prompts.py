@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 def build_explain_prompt(file_data: dict) -> str:

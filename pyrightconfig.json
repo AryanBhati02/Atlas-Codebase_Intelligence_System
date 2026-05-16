@@ -7,7 +7,7 @@
   "venvPath": "backend",
   "venv": ".venv",
   "exclude": [
-    "backend/sessions",
+    "sessions",
     "backend/.venv",
     "backend/**/__pycache__",
     "frontend/node_modules",

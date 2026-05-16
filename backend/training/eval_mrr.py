@@ -96,6 +96,12 @@ def parse_args() -> argparse.Namespace:
         default=64,
         help="Embedding batch size (no InfoNCE matrix here — can be larger).",
     )
+    parser.add_argument(
+        "--static_only",
+        action="store_true",
+        default=False,
+        help="Label results as 'static_only' model (no fused embeddings).",
+    )
     return parser.parse_args()
 
 import re as _re
@@ -336,24 +342,49 @@ def main() -> None:
     hits5     = hits_at_5  / n_queries
     hits10    = hits_at_10 / n_queries
 
-    print()
-    print("=" * 55)
-    print(f"  MRR@10 Evaluation Results")
-    print("=" * 55)
-    print(f"  MRR@10 = {mrr:.4f}  on {n_queries} test queries")
-    print(f"  Rank 1 accuracy  (Hits@1)  : {hits1:.2%}")
-    print(f"  Rank 5 accuracy  (Hits@5)  : {hits5:.2%}")
-    print(f"  Rank 10 accuracy (Hits@10) : {hits10:.2%}")
-    print("=" * 55)
+    from datetime import datetime, timezone
 
+    model_label = "static_only" if args.static_only else "fused"
+
+    # ── tabulate output ────────────────────────────────────────────────────
+    try:
+        from tabulate import tabulate as _tabulate
+        table_rows = [
+            ["MRR@10",    f"{mrr:.4f}",   f"{mrr * 100:.2f}%"],
+            ["Hits@1",    f"{hits1:.4f}",  f"{hits1 * 100:.2f}%"],
+            ["Hits@5",    f"{hits5:.4f}",  f"{hits5 * 100:.2f}%"],
+            ["Hits@10",   f"{hits10:.4f}", f"{hits10 * 100:.2f}%"],
+        ]
+        print()
+        print(_tabulate(
+            table_rows,
+            headers=["Metric", "Score", "Percentage"],
+            tablefmt="simple",
+        ))
+        print(f"  Queries evaluated : {n_queries}  |  Model : {model_label}")
+    except ImportError:
+        # Fallback when tabulate not installed
+        print()
+        print("=" * 55)
+        print(f"  MRR@10 Evaluation Results  [{model_label}]")
+        print("=" * 55)
+        print(f"  MRR@10 = {mrr:.4f}  on {n_queries} test queries")
+        print(f"  Hits@1  : {hits1:.2%}")
+        print(f"  Hits@5  : {hits5:.2%}")
+        print(f"  Hits@10 : {hits10:.2%}")
+        print("=" * 55)
+
+    timestamp = datetime.now(tz=timezone.utc).isoformat()
     results = {
+        "mrr_at_10": round(mrr, 6),
+        "hits_at_1": round(hits1, 6),
+        "hits_at_5": round(hits5, 6),
+        "hits_at_10": round(hits10, 6),
+        "num_queries": n_queries,
+        "model": model_label,
+        "timestamp": timestamp,
         "checkpoint": ckpt_path,
-        "n_samples_evaluated": n_queries,
         "n_total_sampled": n_samples,
-        "mrr_at_10": mrr,
-        "hits_at_1": hits1,
-        "hits_at_5": hits5,
-        "hits_at_10": hits10,
         "model_epoch": ckpt.get("epoch"),
         "model_train_loss": ckpt.get("loss"),
     }

@@ -25,7 +25,7 @@ logger = get_logger("atlas.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Atlas starting up", extra={"version": "2.1.0"})
+    logger.info("Atlas starting up", extra={"version": "2.1.0", "sessions_dir": str(SESSIONS_DIR)})
     from utils.session import cleanup_expired_sessions
     cleaned = cleanup_expired_sessions()
     if cleaned:
@@ -104,5 +104,8 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
-        reload_excludes=[str(SESSIONS_DIR)],
+        reload_excludes=[
+            str(SESSIONS_DIR), "uploads", "*.db",
+            "__pycache__", "training/data", "results",
+        ],
     )

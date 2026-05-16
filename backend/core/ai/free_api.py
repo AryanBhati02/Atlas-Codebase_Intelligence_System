@@ -3,7 +3,7 @@ import time
 import httpx
 from typing import Optional
 
-from utils.env_writer import read_env
+from utils.env_writer import read_env, write_key
 
 logger = logging.getLogger("codebase-intel.ai")
 
@@ -20,6 +20,37 @@ _TIMEOUT = 45.0
 
 _http_client: httpx.AsyncClient | None = None
 
+_provider_models: dict[str, str] = {}
+
+_MODEL_ENV_KEYS: dict[str, str] = {
+    "groq": "GROQ_MODEL",
+    "gemini": "GEMINI_MODEL",
+    "mistral": "MISTRAL_MODEL",
+    "huggingface": "HUGGINGFACE_MODEL",
+}
+
+
+def get_model(provider: str) -> str:
+    """Return the currently selected model for *provider* (may be empty)."""
+    return _provider_models.get(provider, "")
+
+
+def set_model(provider: str, model: str) -> None:
+    """Set the active model for *provider* in memory and persist to .env."""
+    _provider_models[provider] = model
+    env_key = _MODEL_ENV_KEYS.get(provider)
+    if env_key:
+        write_key(env_key, model)
+
+
+def reload_models() -> None:
+    """Load persisted model selections from .env."""
+    env = read_env()
+    for provider, env_key in _MODEL_ENV_KEYS.items():
+        val = env.get(env_key, "").strip()
+        if val:
+            _provider_models[provider] = val
+
 def _get_client(timeout: float = _TIMEOUT) -> httpx.AsyncClient:
     global _http_client
     if _http_client is None or _http_client.is_closed:
@@ -29,21 +60,17 @@ def _get_client(timeout: float = _TIMEOUT) -> httpx.AsyncClient:
         )
     return _http_client
 
+
 async def async_cleanup() -> None:
     global _http_client
     if _http_client and not _http_client.is_closed:
         await _http_client.aclose()
         _http_client = None
 
-PROVIDER_MODELS: dict[str, str] = {
-    "groq": "llama3-8b-8192",
-    "gemini": "gemini-1.5-flash",
-    "mistral": "open-mistral-7b",
-    "huggingface": "mistralai/Mistral-7B-Instruct-v0.3",
-}
 
 class RateLimitError(Exception):
     pass
+
 
 class ProviderError(Exception):
     pass
@@ -56,6 +83,7 @@ def reload_keys() -> None:
     MISTRAL_API_KEY = env.get("MISTRAL_API_KEY") or None
     HUGGINGFACE_API_KEY = env.get("HUGGINGFACE_API_KEY") or None
 
+
 def get_key(provider: str) -> Optional[str]:
     key_map = {
         "groq": GROQ_API_KEY,
@@ -65,11 +93,14 @@ def get_key(provider: str) -> Optional[str]:
     }
     return key_map.get(provider)
 
+
 def has_key(provider: str) -> bool:
     return bool(get_key(provider))
 
+
 def mark_exhausted(provider: str) -> None:
     _exhausted[provider] = time.time() + _RATE_LIMIT_COOLDOWN
+
 
 def is_exhausted(provider: str) -> bool:
     expiry = _exhausted.get(provider, 0)
@@ -78,12 +109,115 @@ def is_exhausted(provider: str) -> bool:
         return False
     return True
 
+
 def clear_exhaustion(provider: str) -> None:
     _exhausted.pop(provider, None)
 
-async def call_groq(prompt: str) -> str:
+async def list_models_groq() -> list[dict]:
+    """Fetch available models from Groq's OpenAI-compatible endpoint."""
+    if not GROQ_API_KEY:
+        return []
+    try:
+        client = _get_client()
+        resp = await client.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            models = data.get("data", [])
+            return [
+                {"id": m["id"], "owned_by": m.get("owned_by", "")}
+                for m in models
+                if m.get("id")
+            ]
+    except Exception as exc:
+        logger.debug("Failed to list Groq models: %s", exc)
+    return []
+
+
+async def list_models_gemini() -> list[dict]:
+    """Fetch available models from Google Generative Language API."""
+    if not GEMINI_API_KEY:
+        return []
+    try:
+        client = _get_client()
+        resp = await client.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": GEMINI_API_KEY},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            models = data.get("models", [])
+            return [
+                {
+                    "id": m.get("name", "").replace("models/", ""),
+                    "name": m.get("displayName", ""),
+                    "owned_by": "google",
+                }
+                for m in models
+                if "generateContent" in str(m.get("supportedGenerationMethods", []))
+            ]
+    except Exception as exc:
+        logger.debug("Failed to list Gemini models: %s", exc)
+    return []
+
+
+async def list_models_mistral() -> list[dict]:
+    """Fetch available models from Mistral API."""
+    if not MISTRAL_API_KEY:
+        return []
+    try:
+        client = _get_client()
+        resp = await client.get(
+            "https://api.mistral.ai/v1/models",
+            headers={"Authorization": f"Bearer {MISTRAL_API_KEY}"},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            models = data.get("data", [])
+            return [
+                {"id": m["id"], "owned_by": m.get("owned_by", "")}
+                for m in models
+                if m.get("id")
+            ]
+    except Exception as exc:
+        logger.debug("Failed to list Mistral models: %s", exc)
+    return []
+
+
+async def list_models_huggingface() -> list[dict]:
+    """HuggingFace does not have a clean model-list API for inference.
+    Return empty — the UI will allow freeform input."""
+    return []
+
+
+_MODEL_LISTERS = {
+    "groq": list_models_groq,
+    "gemini": list_models_gemini,
+    "mistral": list_models_mistral,
+    "huggingface": list_models_huggingface,
+}
+
+
+async def list_provider_models(provider: str) -> list[dict]:
+    """Return available models for *provider* via dynamic API discovery."""
+    lister = _MODEL_LISTERS.get(provider)
+    if not lister:
+        return []
+    try:
+        return await lister()
+    except Exception as exc:
+        logger.warning("Model listing failed for %s: %s", provider, exc)
+        return []
+
+async def call_groq(prompt: str, model: str | None = None) -> str:
     if not GROQ_API_KEY:
         raise ProviderError("Groq API key not configured")
+
+    resolved_model = model or get_model("groq")
+    if not resolved_model:
+        raise ProviderError("No model selected for Groq — select one in Settings")
 
     client = _get_client()
     resp = await client.post(
@@ -93,7 +227,7 @@ async def call_groq(prompt: str) -> str:
             "Content-Type": "application/json",
         },
         json={
-            "model": PROVIDER_MODELS["groq"],
+            "model": resolved_model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 2048,
             "temperature": 0.3,
@@ -108,13 +242,18 @@ async def call_groq(prompt: str) -> str:
     data = resp.json()
     return data["choices"][0]["message"]["content"]
 
-async def call_gemini(prompt: str) -> str:
+
+async def call_gemini(prompt: str, model: str | None = None) -> str:
     if not GEMINI_API_KEY:
         raise ProviderError("Gemini API key not configured")
 
+    resolved_model = model or get_model("gemini")
+    if not resolved_model:
+        raise ProviderError("No model selected for Gemini — select one in Settings")
+
     client = _get_client()
     resp = await client.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{PROVIDER_MODELS['gemini']}:generateContent",
+        f"https://generativelanguage.googleapis.com/v1beta/models/{resolved_model}:generateContent",
         params={"key": GEMINI_API_KEY},
         headers={"Content-Type": "application/json"},
         json={
@@ -140,9 +279,14 @@ async def call_gemini(prompt: str) -> str:
         raise ProviderError("Gemini returned empty content")
     return parts[0].get("text", "")
 
-async def call_mistral(prompt: str) -> str:
+
+async def call_mistral(prompt: str, model: str | None = None) -> str:
     if not MISTRAL_API_KEY:
         raise ProviderError("Mistral API key not configured")
+
+    resolved_model = model or get_model("mistral")
+    if not resolved_model:
+        raise ProviderError("No model selected for Mistral — select one in Settings")
 
     client = _get_client()
     resp = await client.post(
@@ -152,7 +296,7 @@ async def call_mistral(prompt: str) -> str:
             "Content-Type": "application/json",
         },
         json={
-            "model": PROVIDER_MODELS["mistral"],
+            "model": resolved_model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 2048,
             "temperature": 0.3,
@@ -167,13 +311,18 @@ async def call_mistral(prompt: str) -> str:
     data = resp.json()
     return data["choices"][0]["message"]["content"]
 
-async def call_huggingface(prompt: str) -> str:
+
+async def call_huggingface(prompt: str, model: str | None = None) -> str:
     if not HUGGINGFACE_API_KEY:
         raise ProviderError("HuggingFace API key not configured")
 
+    resolved_model = model or get_model("huggingface")
+    if not resolved_model:
+        raise ProviderError("No model selected for HuggingFace — select one in Settings")
+
     client = _get_client(timeout=60.0)
     resp = await client.post(
-        f"https://api-inference.huggingface.co/models/{PROVIDER_MODELS['huggingface']}",
+        f"https://api-inference.huggingface.co/models/{resolved_model}",
         headers={
             "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
             "Content-Type": "application/json",
@@ -200,6 +349,7 @@ async def call_huggingface(prompt: str) -> str:
         return data[0].get("generated_text", "")
     raise ProviderError("HuggingFace returned unexpected response format")
 
+
 _PROVIDER_CALLERS = {
     "groq": call_groq,
     "gemini": call_gemini,
@@ -208,6 +358,7 @@ _PROVIDER_CALLERS = {
 }
 
 _TEST_PROMPT = "Respond with exactly one word: Hello"
+
 
 async def test_provider(provider: str) -> dict:
     if provider == "ollama":
@@ -219,6 +370,10 @@ async def test_provider(provider: str) -> dict:
 
     if not has_key(provider):
         return {"available": False, "latency_ms": 0, "error": "API key not set"}
+
+    model = get_model(provider)
+    if not model:
+        return {"available": False, "latency_ms": 0, "error": "No model selected — choose one in Settings"}
 
     start = time.time()
     try:
@@ -235,6 +390,7 @@ async def test_provider(provider: str) -> dict:
     except Exception as e:
         latency = (time.time() - start) * 1000
         return {"available": False, "latency_ms": round(latency, 1), "error": f"Connection failed: {str(e)[:100]}"}
+
 
 async def _test_ollama() -> dict:
     from core.ai.router import get_ollama_model
@@ -254,6 +410,7 @@ async def _test_ollama() -> dict:
         latency = (time.time() - start) * 1000
         return {"available": False, "latency_ms": round(latency, 1), "error": f"Ollama not reachable: {str(e)[:80]}"}
 
+
 async def get_provider_status() -> dict[str, dict]:
     providers = ["ollama", "groq", "gemini", "mistral", "huggingface"]
     status: dict[str, dict] = {}
@@ -268,3 +425,4 @@ async def get_provider_status() -> dict[str, dict]:
     return status
 
 reload_keys()
+reload_models()

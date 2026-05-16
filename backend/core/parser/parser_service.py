@@ -83,28 +83,34 @@ async def parse_all_files_async(
     parsed_count = 0
     count_lock = asyncio.Lock()
 
-    logger.info(f"Async parsing {total} files (semaphore=10, workers≤{_MAX_WORKERS})")
+    # Process in batches to avoid creating thousands of coroutines at once
+    GATHER_BATCH = 200
+    logger.info(
+        f"Async parsing {total} files (batch={GATHER_BATCH}, "
+        f"semaphore=10, workers≤{_MAX_WORKERS})"
+    )
 
     async def _parse_one(entry: dict) -> dict | None:
         nonlocal parsed_count
         async with sem:
-                                                                         
             result = await asyncio.to_thread(_parse_single_entry, repo_dir_str, entry)
             async with count_lock:
                 parsed_count += 1
-                count = parsed_count                        
+                count = parsed_count
             if progress_callback and (count % 10 == 0 or count == total):
                 progress_callback(count, total)
             return result
 
-    tasks = [_parse_one(entry) for entry in file_entries]
-    raw = await asyncio.gather(*tasks, return_exceptions=True)
+    for batch_start in range(0, total, GATHER_BATCH):
+        batch = file_entries[batch_start : batch_start + GATHER_BATCH]
+        tasks = [_parse_one(entry) for entry in batch]
+        raw = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for item in raw:
-        if isinstance(item, BaseException):
-            logger.debug(f"gather() exception: {item}")
-        elif item is not None:
-            results.append(item)
+        for item in raw:
+            if isinstance(item, BaseException):
+                logger.debug(f"gather() exception: {item}")
+            elif item is not None:
+                results.append(item)
 
     logger.info(f"Async parse done: {len(results)}/{total} files parsed successfully")
     return results

@@ -86,7 +86,7 @@ class AtlasQdrantStore:
             logger.warning("upsert_functions called with empty function list — nothing to do.")
             return
 
-        batch_size = 100
+        batch_size = 500
         total = len(functions)
         points_uploaded = 0
 
@@ -120,10 +120,11 @@ class AtlasQdrantStore:
                     )
                 )
 
+            is_last_batch = (batch_start + batch_size >= total)
             self.client.upsert(
                 collection_name=self.collection_name,
                 points=points,
-                wait=True,
+                wait=is_last_batch,   # Only block on the final batch
             )
             points_uploaded += len(points)
             logger.debug(f"Upserted batch {batch_start // batch_size + 1}: {points_uploaded}/{total}")

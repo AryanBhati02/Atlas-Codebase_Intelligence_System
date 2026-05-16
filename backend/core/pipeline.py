@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import json
 import logging
 import time
@@ -80,8 +81,8 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
 
     progress_store.update_sync(session_id, status="saving")
 
-    parsed_json = json.dumps(parsed)
-    graph_json = json.dumps(graph_data)
+    parsed_json = await asyncio.to_thread(json.dumps, parsed)
+    graph_json = await asyncio.to_thread(json.dumps, graph_data)
 
     await asyncio.to_thread(
         (session_dir / "parsed.json").write_text, parsed_json, "utf-8"
@@ -89,6 +90,13 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
     await asyncio.to_thread(
         (session_dir / "graph.json").write_text, graph_json, "utf-8"
     )
+
+    # Free large intermediate results before function-graph stage
+    parsed_count = len(parsed)
+    
+    del parsed, parsed_json, graph_data, graph_json
+    gc.collect()
+
     _check_timeout()
     
     function_count = 0
@@ -128,15 +136,23 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
             FusionEngine().fuse, fn_graph, coedit_data
         )
 
-        fn_graph_json = json.dumps(graph_to_json(fn_graph), ensure_ascii=False)
-        fn_pyg_json   = json.dumps(graph_to_pyg_data(fn_graph), ensure_ascii=False)
-
+        # Serialize & save sequentially to avoid holding multiple copies
+        fn_graph_json = await asyncio.to_thread(
+            lambda: json.dumps(graph_to_json(fn_graph), ensure_ascii=False)
+        )
         await asyncio.to_thread(
             (session_dir / "function_graph.json").write_text, fn_graph_json, "utf-8"
+        )
+        del fn_graph_json
+
+        fn_pyg_json = await asyncio.to_thread(
+            lambda: json.dumps(graph_to_pyg_data(fn_graph), ensure_ascii=False)
         )
         await asyncio.to_thread(
             (session_dir / "function_graph_pyg.json").write_text, fn_pyg_json, "utf-8"
         )
+        del fn_pyg_json
+
         log.info(
             f"Function call graph saved: {fn_graph.number_of_nodes()} nodes, "
             f"{fn_graph.number_of_edges()} edges."
@@ -146,12 +162,12 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
         log.warning(f"Function-level call graph stage failed (non-fatal): {fn_exc}", exc_info=True)
 
     elapsed = _elapsed()
-    log.info(f"Pipeline complete: {len(parsed)} files, {function_count} functions in {elapsed:.1f}s")
+    log.info(f"Pipeline complete: {parsed_count} files, {function_count} functions in {elapsed:.1f}s")
 
     progress_store.update_sync(
         session_id,
         status="done",
-        parsed_files=len(parsed),
+        parsed_files=(parsed_count),
         total_files=total,
         function_count=function_count,
     )

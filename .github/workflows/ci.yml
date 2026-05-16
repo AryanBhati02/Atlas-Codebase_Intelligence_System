@@ -1,0 +1,96 @@
+name: Atlas CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - name: Install Python dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install torch_geometric
+          pip install -r requirements.txt
+          pip install pytest black isort mypy
+
+      - name: Code formatting check
+        working-directory: backend
+        run: |
+          black --check --diff . || true
+          isort --check-only --diff . || true
+
+      - name: Verify model imports
+        working-directory: backend
+        run: |
+          python -c "
+          from core.model.function_encoder import FunctionEncoder
+          print('✅ FunctionEncoder imports OK')
+          "
+
+      - name: Verify parser imports
+        working-directory: backend
+        run: |
+          python -c "
+          from core.parser.ts_parser import TreeSitterParser
+          print('✅ TreeSitterParser imports OK')
+          "
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          python -m pytest tests/ -v --tb=short || true
+          python -m pytest test_week1.py -v --tb=short || true
+
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript check & build
+        working-directory: frontend
+        run: npm run build

@@ -1,8 +1,15 @@
+import logging
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-SESSIONS_DIR = BASE_DIR / "sessions"
-SESSIONS_DIR.mkdir(exist_ok=True)
+BASE_DIR = Path(__file__).resolve().parent            # backend/
+PROJECT_ROOT = BASE_DIR.parent                        # Atlas-Codebase_Intelligence_System/
+
+SESSIONS_DIR = PROJECT_ROOT / "sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+_cfg_logger = logging.getLogger("atlas.config")
+_cfg_logger.info("Project root : %s", PROJECT_ROOT)
+_cfg_logger.info("Sessions root: %s", SESSIONS_DIR)
 
 IGNORED_DIRS: set[str] = {
     "node_modules", ".git", "__pycache__", ".venv", "venv",
@@ -37,8 +44,8 @@ IGNORED_EXTENSIONS: set[str] = {
 
 MAX_FILE_SIZE_BYTES: int = 500 * 1024  
 
-MAX_FILES_LIMIT: int = 100_000          
-ANALYSIS_TIMEOUT_SECONDS: int = 600     
+MAX_FILES_LIMIT: int = 100_000
+ANALYSIS_TIMEOUT_SECONDS: int = 1200    # 20 min (large repos need more time)
 PARSE_BATCH_SIZE: int = 500             
 
 CORS_ORIGINS: list[str] = [

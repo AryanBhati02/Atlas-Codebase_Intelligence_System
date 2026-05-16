@@ -4,8 +4,9 @@ import {
   getOllamaModels,
   selectModel as apiSelectModel,
   setPreferLocal as apiSetPreferLocal,
+  getProviderModels as apiGetProviderModels,
 } from "../api/api";
-import type { SettingsResponse } from "../types";
+import type { SettingsResponse, ProviderModelInfo } from "../types";
 
 export interface OllamaModelInfo {
   name: string;
@@ -24,6 +25,11 @@ interface SettingsStoreState {
   isLoadingModels: boolean;
   ollamaReachable: boolean;
 
+  /** Per-provider dynamic model lists (cloud providers) */
+  providerModels: Record<string, ProviderModelInfo[]>;
+  loadingProviderModels: Record<string, boolean>;
+  providerModelErrors: Record<string, string | null>;
+
   draft: DraftState;
   committed: DraftState;
   isDirty: boolean;
@@ -33,16 +39,17 @@ interface SettingsStoreState {
 
   loadSettings: () => Promise<void>;
   loadOllamaModels: () => Promise<void>;
+  loadProviderModels: (provider: string) => Promise<void>;
   initDraft: (settings: SettingsResponse) => void;
   updateDraft: (partial: Partial<DraftState>) => void;
   applyDraft: () => Promise<boolean>;
   cancelDraft: () => void;
-  
+
   clearApiKeys: () => void;
 }
 
 const DEFAULT_DRAFT: DraftState = {
-  selectedModel: "phi3:mini",
+  selectedModel: "",
   preferLocal: true,
 };
 
@@ -51,6 +58,10 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   ollamaModels: [],
   isLoadingModels: false,
   ollamaReachable: false,
+
+  providerModels: {},
+  loadingProviderModels: {},
+  providerModelErrors: {},
 
   draft: { ...DEFAULT_DRAFT },
   committed: { ...DEFAULT_DRAFT },
@@ -65,7 +76,7 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
       set({ settings: data });
       get().initDraft(data);
     } catch {
-      
+
     }
   },
 
@@ -83,9 +94,30 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
     }
   },
 
+  loadProviderModels: async (provider: string) => {
+    set((s) => ({
+      loadingProviderModels: { ...s.loadingProviderModels, [provider]: true },
+      providerModelErrors: { ...s.providerModelErrors, [provider]: null },
+    }));
+    try {
+      const data = await apiGetProviderModels(provider);
+      set((s) => ({
+        providerModels: { ...s.providerModels, [provider]: data.models },
+        loadingProviderModels: { ...s.loadingProviderModels, [provider]: false },
+        providerModelErrors: { ...s.providerModelErrors, [provider]: data.error ?? null },
+      }));
+    } catch {
+      set((s) => ({
+        providerModels: { ...s.providerModels, [provider]: [] },
+        loadingProviderModels: { ...s.loadingProviderModels, [provider]: false },
+        providerModelErrors: { ...s.providerModelErrors, [provider]: "Failed to load models" },
+      }));
+    }
+  },
+
   initDraft: (settings: SettingsResponse) => {
     const ollamaProvider = settings.providers.find((p) => p.name === "ollama");
-    const model = ollamaProvider?.model ?? "phi3:mini";
+    const model = ollamaProvider?.model || "";
     const committed: DraftState = {
       selectedModel: model,
       preferLocal: settings.prefer_local,
@@ -108,7 +140,7 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
 
     try {
       if (draft.selectedModel !== committed.selectedModel) {
-        await apiSelectModel(draft.selectedModel);
+        await apiSelectModel(draft.selectedModel, "ollama");
       }
       if (draft.preferLocal !== committed.preferLocal) {
         await apiSetPreferLocal(draft.preferLocal);
@@ -133,7 +165,7 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   },
 
   clearApiKeys: () => {
-    
+
     set({ settings: null });
   },
 }));

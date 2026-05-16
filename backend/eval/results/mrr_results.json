@@ -1,11 +1,13 @@
 {
+  "mrr_at_10": 0.304519,
+  "hits_at_1": 0.214091,
+  "hits_at_5": 0.421591,
+  "hits_at_10": 0.542955,
+  "num_queries": 4400,
+  "model": "fused",
+  "timestamp": "2026-05-16T20:28:07.570233+00:00",
   "checkpoint": "C:\\New folder\\0.5 Atlass - codebase copy - Copy\\Atlas-Codebase_Intelligence_System\\backend\\training\\checkpoints\\best_model.pt",
-  "n_samples_evaluated": 4400,
   "n_total_sampled": 5000,
-  "mrr_at_10": 0.11190611471861472,
-  "hits_at_1": 0.09704545454545455,
-  "hits_at_5": 0.12977272727272726,
-  "hits_at_10": 0.145,
-  "model_epoch": 5,
-  "model_train_loss": 3.94096617544851
+  "model_epoch": 95,
+  "model_train_loss": 0.3512667132502826
 }

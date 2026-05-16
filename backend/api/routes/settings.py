@@ -12,10 +12,12 @@ from core.ai.free_api import (
     reload_keys,
     has_key,
     get_key,
+    get_model,
+    set_model,
+    list_provider_models,
     is_exhausted,
     clear_exhaustion,
     test_provider,
-    PROVIDER_MODELS,
 )
 from core.ai.router import (
     get_provider_stats,
@@ -186,14 +188,13 @@ async def get_settings():
             key_set=bool(raw_key),
             key_masked=mask_key(raw_key) if raw_key else "",
             status=_get_provider_status_label(provider_name),
-            model=PROVIDER_MODELS.get(provider_name, ""),
+            model=get_model(provider_name),
             requests_today=p_stats.get("requests_today", 0),
             avg_latency_ms=p_stats.get("avg_latency_ms", 0),
         ))
 
-    active_model = get_ollama_model() if get_prefer_local() else PROVIDER_MODELS.get(
-        _determine_active_provider(), get_ollama_model()
-    )
+    active_prov = _determine_active_provider()
+    active_model = get_ollama_model() if get_prefer_local() else (get_model(active_prov) or get_ollama_model())
 
     return SettingsResponse(
         providers=providers_info,
@@ -245,7 +246,7 @@ async def test_provider_endpoint(request: TestProviderRequest):
 
     result = await test_provider(provider)
 
-    model = get_ollama_model() if provider == "ollama" else PROVIDER_MODELS.get(provider, "")
+    model = get_ollama_model() if provider == "ollama" else get_model(provider)
 
     return TestProviderResponse(
         available=result["available"],
@@ -306,6 +307,7 @@ async def clear_cache(request: ClearCacheRequest):
 
 class SelectModelRequest(BaseModel):
     model: str
+    provider: Optional[str] = None
 
 @router.get("/ollama-models")
 async def list_ollama_models():
@@ -335,10 +337,47 @@ async def list_ollama_models():
 
     return {"models": models, "reachable": reachable}
 
+@router.get("/provider-models/{provider}")
+async def get_provider_models_endpoint(provider: str):
+    """Dynamically fetch available models from a cloud provider's API."""
+    provider = provider.lower()
+    valid = {"groq", "gemini", "mistral", "huggingface"}
+    if provider not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid provider: {provider}")
+
+    if not has_key(provider):
+        return {"provider": provider, "models": [], "error": "API key not set — add a key first"}
+
+    try:
+        models = await list_provider_models(provider)
+        return {
+            "provider": provider,
+            "models": models,
+            "current_model": get_model(provider),
+            "error": None,
+        }
+    except Exception as exc:
+        return {
+            "provider": provider,
+            "models": [],
+            "current_model": get_model(provider),
+            "error": str(exc)[:200],
+        }
+
 @router.post("/select-model")
-async def select_model(request: SelectModelRequest):
+async def select_model_endpoint(request: SelectModelRequest):
     model = request.model.strip()
     if not model:
         raise HTTPException(status_code=400, detail="Model name cannot be empty.")
-    set_ollama_model(model)
-    return {"model": model, "status": "ok"}
+
+    provider = (request.provider or "ollama").lower().strip()
+
+    if provider == "ollama":
+        set_ollama_model(model)
+    else:
+        valid = {"groq", "gemini", "mistral", "huggingface"}
+        if provider not in valid:
+            raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+        set_model(provider, model)
+
+    return {"provider": provider, "model": model, "status": "ok"}

@@ -40,10 +40,13 @@ export function GitTimeline() {
   const [sliderValue, setSliderValue] = useState(0);
   const [fetchError, setFetchError] = useState(false);
   const sliderRef = useRef<HTMLInputElement>(null);
+  const timelineFetchingRef = useRef(false);
+  const coverageFetchingRef = useRef(false);
 
   useEffect(() => {
-    if (!sessionId || timelineData || isTimelineLoading) return;
+    if (!sessionId || timelineData || timelineFetchingRef.current) return;
     let cancelled = false;
+    timelineFetchingRef.current = true;
     (async () => {
       setTimelineLoading(true);
       setFetchError(false);
@@ -51,21 +54,28 @@ export function GitTimeline() {
         const data = await getGitTimeline(sessionId);
         if (!cancelled) {
           setTimelineData(data);
-          setTimelineLoading(false);
         }
       } catch {
         if (!cancelled) {
           setFetchError(true);
           setTimelineLoading(false);
         }
+      } finally {
+        if (!cancelled) {
+          timelineFetchingRef.current = false;
+        }
       }
     })();
-    return () => { cancelled = true; };
-  }, [sessionId, timelineData, isTimelineLoading, setTimelineData, setTimelineLoading]);
+    return () => {
+      cancelled = true;
+      timelineFetchingRef.current = false;
+    };
+  }, [sessionId, timelineData, setTimelineData, setTimelineLoading]);
 
   useEffect(() => {
-    if (!sessionId || coverageData || isCoverageLoading) return;
+    if (!sessionId || coverageData || coverageFetchingRef.current) return;
     let cancelled = false;
+    coverageFetchingRef.current = true;
     (async () => {
       setCoverageLoading(true);
       try {
@@ -73,10 +83,17 @@ export function GitTimeline() {
         if (!cancelled) setCoverageData(data);
       } catch {
         if (!cancelled) setCoverageLoading(false);
+      } finally {
+        if (!cancelled) {
+          coverageFetchingRef.current = false;
+        }
       }
     })();
-    return () => { cancelled = true; };
-  }, [sessionId, coverageData, isCoverageLoading, setCoverageData, setCoverageLoading]);
+    return () => {
+      cancelled = true;
+      coverageFetchingRef.current = false;
+    };
+  }, [sessionId, coverageData, setCoverageData, setCoverageLoading]);
 
   const handleSliderChange = useCallback(
     async (value: number) => {

@@ -37,7 +37,7 @@ async def mcp_status() -> dict:
     - model_loaded     : True if the model checkpoint file exists on disk.
     - bm25_loaded      : True if the BM25 index file exists on disk.
     """
-    # ---- Qdrant health check ----
+    #Qdrant health check
     qdrant_connected = False
     indexed_functions: int = 0
     collection_name = "atlas_functions"
@@ -54,7 +54,7 @@ async def mcp_status() -> dict:
     except Exception as exc:
         logger.warning("Qdrant health check failed: %s", exc)
 
-    # ---- Artefact existence checks ----
+    #Artefact existence checkss
     checkpoint_path = _BACKEND_DIR / "training" / "checkpoints" / "best_model.pt"
     bm25_path = _BACKEND_DIR / "training" / "data" / "bm25_index.pkl"
 

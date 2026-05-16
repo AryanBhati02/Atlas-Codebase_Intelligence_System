@@ -26,6 +26,10 @@ from typing import Dict, List, Tuple
 
 logger = logging.getLogger("codebase-intel.git_coedits")
 
+MAX_FILES_PER_COMMIT = 50        # Skip mega-commits (bulk refactors)
+MAX_COEDIT_PAIRS     = 100_000   # Hard cap on file-level co-edit pairs
+MAX_FUNCS_PER_FILE   = 20        # Cap cross-file function expansion
+
 
 class GitCoEditExtractor:
     """
@@ -107,11 +111,25 @@ class GitCoEditExtractor:
             if len(files) < 2:
                 continue
 
-            
+            # Skip mega-commits (bulk refactors / auto-generated changes)
+            if len(files) > MAX_FILES_PER_COMMIT:
+                logger.debug(
+                    f"Skipping mega-commit with {len(files)} files "
+                    f"(cap={MAX_FILES_PER_COMMIT})"
+                )
+                continue
+
             for file_a, file_b in combinations(sorted(files), 2):
                 coedit_count[(file_a, file_b)] += 1
 
-        
+            # Early termination when pair limit reached
+            if len(coedit_count) >= MAX_COEDIT_PAIRS:
+                logger.info(
+                    f"Co-edit pair cap reached ({MAX_COEDIT_PAIRS}); "
+                    "stopping early."
+                )
+                break
+
         sorted_matrix = dict(
             sorted(coedit_count.items(), key=lambda kv: kv[1], reverse=True)
         )
@@ -172,14 +190,14 @@ class GitCoEditExtractor:
             }
 
             for (file_a, file_b), weight in normalised.items():
-                funcs_a = file_to_funcs.get(file_a, [])
-                funcs_b = file_to_funcs.get(file_b, [])
+                # Cap functions per file to prevent O(n²) blowup
+                funcs_a = file_to_funcs.get(file_a, [])[:MAX_FUNCS_PER_FILE]
+                funcs_b = file_to_funcs.get(file_b, [])[:MAX_FUNCS_PER_FILE]
                 if not funcs_a or not funcs_b:
                     continue
                 for fid_a in funcs_a:
                     for fid_b in funcs_b:
                         key = (fid_a, fid_b) if fid_a <= fid_b else (fid_b, fid_a)
-                        
                         if key not in func_weights or func_weights[key] < weight:
                             func_weights[key] = weight
         else:

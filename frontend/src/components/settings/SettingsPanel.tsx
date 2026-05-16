@@ -22,6 +22,7 @@ import {
   EyeOff,
   CheckCircle2,
   XCircle,
+  Type,
 } from "lucide-react";
 import { useUiStore } from "../../store/uiStore";
 import { useSessionStore } from "../../store/sessionStore";
@@ -47,22 +48,22 @@ const PROVIDER_META: Record<
   groq: {
     label: "Groq",
     color: "#f59e0b",
-    description: "14,400 req/day free — Llama 3 8B",
+    description: "14,400 req/day free — fast inference",
   },
   gemini: {
     label: "Google Gemini",
     color: "#3b82f6",
-    description: "1,500 req/day free — Gemini 1.5 Flash",
+    description: "1,500 req/day free — Google AI models",
   },
   mistral: {
     label: "Mistral",
     color: "#8b5cf6",
-    description: "~1,000 req/day — Mistral 7B",
+    description: "~1,000 req/day — Mistral AI models",
   },
   huggingface: {
     label: "HuggingFace",
     color: "#f97316",
-    description: "~500 req/day — Various models",
+    description: "~500 req/day — open-source models",
   },
 };
 
@@ -145,6 +146,24 @@ function ProviderKeyRow({
   } | null>(null);
   const [expanded, setExpanded] = useState(false);
 
+  // Per-provider model selection state
+  const {
+    providerModels,
+    loadingProviderModels,
+    providerModelErrors,
+    loadProviderModels,
+    loadSettings,
+  } = useSettingsStore();
+
+  const [customModelInput, setCustomModelInput] = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [isSelectingModel, setIsSelectingModel] = useState(false);
+  const [modelToast, setModelToast] = useState<string | null>(null);
+
+  const models = providerModels[provider.name] ?? [];
+  const isLoadingModels = loadingProviderModels[provider.name] ?? false;
+  const modelError = providerModelErrors[provider.name] ?? null;
+
   if (!meta) return null;
 
   const handleSaveTest = async () => {
@@ -189,6 +208,27 @@ function ProviderKeyRow({
     } finally {
       setIsTesting(false);
     }
+  };
+
+  const handleModelChange = async (newModel: string) => {
+    if (!newModel.trim() || newModel === provider.model) return;
+    setIsSelectingModel(true);
+    try {
+      await selectModel(newModel.trim(), provider.name);
+      await loadSettings();
+      setModelToast(newModel.trim());
+      setCustomModelInput("");
+      setShowCustomInput(false);
+      setTimeout(() => setModelToast(null), 3000);
+    } catch {
+      // silently fail — provider API will validate at usage time
+    } finally {
+      setIsSelectingModel(false);
+    }
+  };
+
+  const handleLoadModels = () => {
+    void loadProviderModels(provider.name);
   };
 
   return (
@@ -268,10 +308,11 @@ function ProviderKeyRow({
                 )}
                 <div className="flex items-center gap-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
                   <HardDrive className="w-3 h-3" />
-                  {provider.model}
+                  {provider.model || "No model selected"}
                 </div>
               </div>
 
+              {/* API Key section */}
               {provider.key_required && (
                 <div className="space-y-2">
                   <div className="relative">
@@ -353,6 +394,140 @@ function ProviderKeyRow({
                 </button>
               )}
 
+              {/* Per-provider model selection (cloud providers only) */}
+              {provider.key_required && provider.key_set && (
+                <div className="space-y-2 pt-1" style={{ borderTop: "1px solid var(--surface-section-border)" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+                      Model
+                    </span>
+                    <button
+                      onClick={handleLoadModels}
+                      disabled={isLoadingModels}
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium disabled:opacity-30 transition-all"
+                      style={{
+                        color: "var(--text-muted)",
+                        background: "var(--surface-card-bg)",
+                        border: "1px solid var(--surface-card-border)",
+                      }}
+                    >
+                      <RefreshCw className={`w-2.5 h-2.5 ${isLoadingModels ? "animate-spin" : ""}`} />
+                      Load Models
+                    </button>
+                  </div>
+
+                  {/* Dynamic model dropdown */}
+                  {models.length > 0 && (
+                    <select
+                      value={provider.model || ""}
+                      onChange={(e) => { void handleModelChange(e.target.value); }}
+                      disabled={isSelectingModel}
+                      className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none transition-colors appearance-none cursor-pointer disabled:opacity-50"
+                      style={{
+                        background: "var(--surface-input-bg)",
+                        border: "1px solid var(--surface-input-border)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {!provider.model && (
+                        <option value="" disabled>Select a model…</option>
+                      )}
+                      {provider.model && !models.some((m) => m.id === provider.model) && (
+                        <option value={provider.model}>{provider.model}</option>
+                      )}
+                      {models.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.id}{m.owned_by ? ` (${m.owned_by})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Freeform model input toggle */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowCustomInput(!showCustomInput)}
+                      className="flex items-center gap-1 text-[9px] font-medium transition-colors"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      <Type className="w-2.5 h-2.5" />
+                      {showCustomInput ? "Hide" : "Custom model name"}
+                    </button>
+                  </div>
+
+                  {showCustomInput && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={customModelInput}
+                        onChange={(e) => setCustomModelInput(e.target.value)}
+                        placeholder="Type any model name…"
+                        className="flex-1 px-3 py-1.5 rounded-lg text-xs font-mono focus:outline-none transition-colors"
+                        style={{
+                          background: "var(--surface-input-bg)",
+                          border: "1px solid var(--surface-input-border)",
+                          color: "var(--text-primary)",
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && customModelInput.trim()) {
+                            void handleModelChange(customModelInput);
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => { void handleModelChange(customModelInput); }}
+                        disabled={!customModelInput.trim() || isSelectingModel}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium
+                          bg-accent-purple/12 text-accent-purple border border-accent-purple/20
+                          hover:bg-accent-purple/18 disabled:opacity-30 transition-all"
+                      >
+                        {isSelectingModel ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Check className="w-3 h-3" />
+                        )}
+                        Set
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Model error */}
+                  {modelError && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px]"
+                      style={{
+                        background: "rgba(239,68,68,0.06)",
+                        border: "1px solid rgba(239,68,68,0.12)",
+                        color: "#f87171",
+                      }}
+                    >
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      <span>{modelError}</span>
+                    </div>
+                  )}
+
+                  {/* Model switch toast */}
+                  <AnimatePresence>
+                    {modelToast && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px]"
+                        style={{
+                          background: "rgba(16,185,129,0.08)",
+                          border: "1px solid rgba(16,185,129,0.15)",
+                          color: "#34d399",
+                        }}
+                      >
+                        <Check className="w-3 h-3 shrink-0" />
+                        <span>Model set to {modelToast}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              {/* Provider test result */}
               <AnimatePresence>
                 {testResult && (
                   <motion.div
@@ -410,7 +585,7 @@ export function SettingsPanel() {
     if (settingsPanelOpen) {
       loadSettings();
       loadOllamaModels();
-      getAIStatus().then(setAIStatus).catch(() => {});
+      getAIStatus().then(setAIStatus).catch(() => { });
     }
   }, [settingsPanelOpen, loadSettings, loadOllamaModels, setAIStatus]);
 
@@ -458,7 +633,7 @@ export function SettingsPanel() {
     setIsSwitchingModel(true);
     updateDraft({ selectedModel: modelName });
     try {
-      await selectModel(modelName);
+      await selectModel(modelName, "ollama");
       await loadSettings();
       setSwitchToast(modelName);
       setTimeout(() => setSwitchToast(null), 3000);
@@ -593,7 +768,7 @@ export function SettingsPanel() {
                       className="text-[10px] font-medium font-mono"
                       style={{ color: "var(--text-primary)" }}
                     >
-                      {settings.active_model}
+                      {settings.active_model || "None selected"}
                     </span>
                   </div>
                 )}
@@ -628,7 +803,7 @@ export function SettingsPanel() {
                   className="text-[11px] font-semibold uppercase tracking-wider mb-3"
                   style={{ color: "var(--text-tertiary)" }}
                 >
-                  Model Selection
+                  Local Model (Ollama)
                 </h3>
 
                 <div className="space-y-3">
@@ -638,7 +813,7 @@ export function SettingsPanel() {
                         className="text-[10px]"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Local Model (Ollama)
+                        Ollama Model
                       </label>
                       <button
                         onClick={loadOllamaModels}
@@ -673,7 +848,7 @@ export function SettingsPanel() {
                         ))
                       ) : (
                         <>
-                          <option value={draft.selectedModel}>{draft.selectedModel}</option>
+                          <option value={draft.selectedModel}>{draft.selectedModel || "No model"}</option>
                           <option value="" disabled>
                             {ollamaReachable ? "No models installed" : "Ollama not reachable"}
                           </option>
@@ -830,7 +1005,7 @@ export function SettingsPanel() {
               </div>
             </div>
 
-            {}
+            { }
             <div
               className="flex items-center gap-2 px-5 py-3 shrink-0"
               style={{

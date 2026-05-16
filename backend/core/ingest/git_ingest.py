@@ -35,7 +35,7 @@ def extract_repo_name(url: str) -> str:
         return f"{parts[-2]}/{parts[-1]}"
     return parts[-1] if parts else "unknown"
 
-def _do_clone_sync(url: str, repo_dir: Path, depth: int = 1) -> None:
+def _do_clone_sync(url: str, repo_dir: Path, depth: int = 100) -> None:
     cmd = [
         "git", "clone",
         f"--depth={depth}",

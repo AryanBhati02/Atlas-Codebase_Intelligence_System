@@ -123,7 +123,7 @@ if mcp_src.exists():
     ok("MCP tools registered: %d/5 — %s" % (len(found), ", ".join(found)))
 
 # Sessions check
-sessions_dir = pathlib.Path("sessions")
+from config import SESSIONS_DIR as sessions_dir  # noqa: E402
 if sessions_dir.exists():
     session_count = len(list(sessions_dir.iterdir()))
     fg_found = 0

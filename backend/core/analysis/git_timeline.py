@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from datetime import datetime
 
@@ -207,6 +209,31 @@ def get_cached_timeline(session_dir: Path) -> list[dict] | None:
             pass
     return None
 
+def _atomic_write(path: Path, data: str) -> None:
+    """Write *data* to *path* atomically via temp file + os.replace."""
+    fd = -1
+    tmp_path = ""
+    try:
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(path.parent), prefix=".timeline_", suffix=".tmp",
+        )
+        os.write(fd, data.encode("utf-8"))
+        os.close(fd)
+        fd = -1
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        if fd >= 0:
+            os.close(fd)
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        raise
+
 def cache_timeline(session_dir: Path, timeline: list[dict]) -> None:
     cache_path = session_dir / "git_timeline.json"
-    cache_path.write_text(json.dumps(timeline, default=str), encoding="utf-8")
+    try:
+        _atomic_write(cache_path, json.dumps(timeline, default=str))
+    except OSError as exc:
+        logger.warning(f"Timeline cache write failed: {exc}")

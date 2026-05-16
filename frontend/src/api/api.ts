@@ -14,6 +14,7 @@ import type {
   KeyUpdateResponse,
   TestProviderResponse,
   ClearCacheResponse,
+  ProviderModelsResponse,
   DeadCodeResponse,
   FunctionGraphResponse,
   ReadmeResponse,
@@ -310,11 +311,21 @@ export async function getOllamaModels(): Promise<{
 }
 
 export async function selectModel(
-  model: string
-): Promise<{ model: string; status: string }> {
-  const res = await client.post<{ model: string; status: string }>(
+  model: string,
+  provider: string = "ollama"
+): Promise<{ provider: string; model: string; status: string }> {
+  const res = await client.post<{ provider: string; model: string; status: string }>(
     "/api/settings/select-model",
-    { model }
+    { model, provider }
+  );
+  return res.data;
+}
+
+export async function getProviderModels(
+  provider: string
+): Promise<ProviderModelsResponse> {
+  const res = await client.get<ProviderModelsResponse>(
+    `/api/settings/provider-models/${provider}`
   );
   return res.data;
 }

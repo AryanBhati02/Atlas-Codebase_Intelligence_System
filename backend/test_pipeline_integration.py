@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, ".")
 
 SESSION_ID = "0248f28a4f3a"
-SESSION_DIR = Path("sessions") / SESSION_ID
+from config import SESSIONS_DIR  # noqa: E402
+SESSION_DIR = SESSIONS_DIR / SESSION_ID
 
 
 async def main() -> None:

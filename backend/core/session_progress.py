@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 import logging
 import threading
 from dataclasses import asdict, dataclass, field
@@ -94,13 +96,45 @@ class ProgressStore:
     def _progress_path(self, session_id: str) -> Path:
         return SESSIONS_DIR / session_id / "progress.json"
 
+    @staticmethod
+    def _atomic_write(path: Path, data: str) -> None:
+        """Write *data* to *path* atomically.
+
+        Writes to a temporary file in the same directory, then uses
+        ``os.replace`` (atomic on both POSIX and Windows) to swap it
+        into place.  This guarantees readers never observe a
+        partially-written file.
+        """
+        fd = -1
+        tmp_path = ""
+        try:
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(path.parent),
+                prefix=".progress_",
+                suffix=".tmp",
+            )
+            os.write(fd, data.encode("utf-8"))
+            os.close(fd)
+            fd = -1  # Mark as closed so the finally block doesn't double-close
+            os.replace(tmp_path, str(path))
+        except BaseException:
+            # Clean up the temp file on any error
+            if fd >= 0:
+                os.close(fd)
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+            raise
+
     def _write_disk(self, session_id: str, entry: ProgressEntry) -> None:
         path = self._progress_path(session_id)
         if not path.parent.exists():
             logger.debug(f"Session dir missing for {session_id}; skipping progress write")
             return
         try:
-            path.write_text(json.dumps(asdict(entry)), encoding="utf-8")
+            self._atomic_write(path, json.dumps(asdict(entry)))
         except OSError as exc:
             logger.warning(f"Progress write failed for {session_id}: {exc}")
 

@@ -239,6 +239,19 @@ export interface ClearCacheResponse {
   message: string;
 }
 
+export interface ProviderModelInfo {
+  id: string;
+  name?: string;
+  owned_by?: string;
+}
+
+export interface ProviderModelsResponse {
+  provider: string;
+  models: ProviderModelInfo[];
+  current_model?: string;
+  error?: string | null;
+}
+
 export interface DeadFileEntry {
   path: string;
   reason: string;

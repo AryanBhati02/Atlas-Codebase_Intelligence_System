@@ -19,11 +19,12 @@ from core.ai.free_api import (
     is_exhausted,
     has_key,
     get_key,
+    get_model,
     mark_exhausted,
-    PROVIDER_MODELS,
     RateLimitError,
     ProviderError,
     reload_keys as _reload_provider_keys,
+    reload_models as _reload_provider_models,
 )
 
 logger = get_logger("atlas.ai.router")
@@ -274,7 +275,7 @@ async def _stream_groq(prompt: str) -> AsyncGenerator[str, None]:
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={
-                "model": PROVIDER_MODELS["groq"],
+                "model": get_model("groq"),
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 1500,
                 "temperature": 0.3,
@@ -307,7 +308,7 @@ async def _stream_gemini(prompt: str) -> AsyncGenerator[str, None]:
     key = get_key("gemini")
     if not key:
         raise ProviderError("Gemini API key not configured")
-    model = PROVIDER_MODELS["gemini"]
+    model = get_model("gemini")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
     async with httpx.AsyncClient(timeout=90.0) as client:
         async with client.stream(
@@ -349,7 +350,7 @@ async def _stream_mistral(prompt: str) -> AsyncGenerator[str, None]:
             "https://api.mistral.ai/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={
-                "model": PROVIDER_MODELS["mistral"],
+                "model": get_model("mistral"),
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 1500,
                 "temperature": 0.3,
@@ -441,3 +442,4 @@ async def route_stream(prompt: str) -> AsyncGenerator[str, None]:
 
 def reload_keys() -> None:
     _reload_provider_keys()
+    _reload_provider_models()

@@ -7,10 +7,10 @@ logger = logging.getLogger("codebase-intel.tasks")
 
 @celery_app.task(
     name="tasks.run_analysis_pipeline",
-    max_retries=0,                                                             
-    acks_late=True,                                                       
-    time_limit=660,                                                                       
-    soft_time_limit=600,                                                                
+    max_retries=0,
+    acks_late=True,
+    time_limit=1500,              # 25 min hard limit
+    soft_time_limit=1200,         # 20 min soft limit (matches config)
 )
 def run_analysis_pipeline_task(session_id: str, source_type: str) -> dict:
     from pathlib import Path

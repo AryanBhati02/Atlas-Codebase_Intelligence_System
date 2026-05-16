@@ -101,7 +101,8 @@ _SKIP_SUFFIXES: tuple[str, ...] = (
     ".d.ts",
 )
 
-_MAX_FILE_SIZE = 500 * 1024  
+_MAX_FILE_SIZE = 500 * 1024
+_BODY_TEXT_MAX_LENGTH = 500   # Truncate body text; node_features uses first 200 chars
 
 
 _PY_EXTS: frozenset[str] = frozenset({".py"})
@@ -487,7 +488,7 @@ class TreeSitterParser:
 
             
             body_node = func_node.child_by_field_name("body")
-            body_text = _node_text(body_node) if body_node else ""
+            body_text = _node_text(body_node)[:_BODY_TEXT_MAX_LENGTH] if body_node else ""
 
             
             docstring = ""
@@ -621,7 +622,7 @@ class TreeSitterParser:
 
             
             body_node = func_node.child_by_field_name("body")
-            body_text = _node_text(body_node) if body_node else ""
+            body_text = _node_text(body_node)[:_BODY_TEXT_MAX_LENGTH] if body_node else ""
 
             
             docstring = _extract_jsdoc(doc_node or func_node)

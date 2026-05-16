@@ -104,11 +104,23 @@ class FusionEngine:
         coedit_data = coedit_data or {}
         fused = nx.DiGraph()
 
-        
+        # Copy all nodes from the static graph
         for node, attrs in static_graph.nodes(data=True):
             fused.add_node(node, **attrs)
 
-        
+        # Dynamically scale max co-edit edges for large graphs
+        n_nodes = static_graph.number_of_nodes()
+        effective_max_coedit = min(
+            self.max_coedit_edges,
+            max(5_000, 200_000 // max(n_nodes, 1)),
+        )
+        if effective_max_coedit < self.max_coedit_edges:
+            logger.info(
+                f"FusionEngine: large graph ({n_nodes} nodes) — "
+                f"capping co-edit edges to {effective_max_coedit}"
+            )
+
+        # Compute fan-in frequency scores
         fan_in: Dict[str, int] = {
             n: static_graph.in_degree(n) for n in static_graph.nodes()
         }
@@ -117,7 +129,7 @@ class FusionEngine:
             n: v / max_fan_in for n, v in fan_in.items()
         }
 
-        
+        # Add static edges with computed weights
         static_edge_set: set = set()
         for u, v, edata in static_graph.edges(data=True):
             static_edge_set.add((u, v))
@@ -128,17 +140,15 @@ class FusionEngine:
             f_score  = (freq_score.get(u, 0.0) + freq_score.get(v, 0.0)) / 2.0
 
             if co_score > 0.0:
-                
                 weight = (
                     self.static_weight * 1.0
                     + self.coedit_weight * co_score
                     + self.call_freq_weight * f_score
                 )
             else:
-                
                 weight = 1.0
 
-            weight = float(np.clip(weight, 0.0, 2.0))   
+            weight = float(np.clip(weight, 0.0, 2.0))
             fused.add_edge(
                 u,
                 v,
@@ -160,9 +170,9 @@ class FusionEngine:
                 continue
             coedit_candidates.append((weight, (node_a, node_b), (node_a, node_b, co_score)))
 
-        
+        # Sort and cap using dynamic limit
         coedit_candidates.sort(key=lambda x: x[0], reverse=True)
-        max_pairs = self.max_coedit_edges // 2
+        max_pairs = effective_max_coedit // 2
         coedit_candidates = coedit_candidates[:max_pairs]
 
         logger.info(
@@ -207,9 +217,6 @@ class FusionEngine:
     def _annotate_nodes(self, graph: nx.DiGraph) -> None:
         """Add fan_in, fan_out, is_hot_path, coupling_score, is_isolated."""
         fan_ins_all = np.array([graph.in_degree(n) for n in graph.nodes()], dtype=float)
-        # Compute the threshold only from nodes that actually have callers.
-        # Using all nodes collapses the 90th percentile to 0 when most nodes
-        # are leaves (fan_in == 0), which causes is_hot_path to never fire.
         fan_ins_nonzero = fan_ins_all[fan_ins_all > 0]
         if len(fan_ins_nonzero) >= 10:
             threshold = float(np.percentile(fan_ins_nonzero, 90))

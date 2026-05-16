@@ -216,4 +216,3 @@ Record a 60-second screen capture demonstrating:
 3. `get_hot_paths` showing the riskiest functions
 4. `get_architecture_rules` reporting the module structure
 
-Upload to YouTube / Loom and paste the link here: `[TODO: add link]`

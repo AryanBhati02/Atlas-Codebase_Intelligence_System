@@ -1,0 +1,19 @@
+{
+  "name": "atlas-codebase_intelligence_system",
+  "version": "1.0.0",
+  "description": "> AI-powered codebase analysis that understands what code **DOES**, not just what it says. GATv2 graph neural network + behavioral search + MCP integration for Claude Code.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "dependencies": {
+    "strip-comments": "^2.0.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

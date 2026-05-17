@@ -1,0 +1,18 @@
+# Node modules (rebuilt inside the image)
+node_modules/
+
+# Vite production build output
+dist/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Git metadata
+.git/
+.gitignore
+
+# TypeScript build info
+*.tsbuildinfo

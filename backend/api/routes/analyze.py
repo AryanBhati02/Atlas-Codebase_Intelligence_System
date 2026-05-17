@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 import threading
 from pathlib import Path
 from typing import Protocol, cast
@@ -21,16 +22,63 @@ logger = logging.getLogger("codebase-intel.routes.analyze")
 
 router = APIRouter(prefix="/analyze", tags=["Analyze"])
 
+# Sentinel files written by the ingest route — same constants as tasks.py
+_INGEST_READY = ".ingest_ready"
+_INGEST_FAILED = ".ingest_failed"
+_READY_WAIT_SECS = 30
+_READY_POLL_INTERVAL = 1
+
 
 class CeleryTask(Protocol):
     def delay(self, *args: object, **kwargs: object) -> object:
         ...
+
+
+def _wait_for_ingest_sentinel(session_id: str, session_dir: Path) -> bool:
+    """
+    Block (in a thread) until .ingest_ready appears or .ingest_failed is found.
+    Returns True if ready, False if failed/timed-out.
+    """
+    log = logging.getLogger(f"codebase-intel.thread.{session_id[:8]}")
+    ready_file = session_dir / _INGEST_READY
+    failed_file = session_dir / _INGEST_FAILED
+
+    log.info(f"[INGEST_WAIT] Thread fallback waiting for sentinel {ready_file}")
+    for i in range(_READY_WAIT_SECS):
+        if failed_file.exists():
+            reason = failed_file.read_text(encoding="utf-8").strip()
+            log.error(f"[INGEST_FAILED] Ingestion failed before thread pipeline: {reason}")
+            progress_store.update_sync(
+                session_id,
+                status="error",
+                error_message=f"Ingestion failed before analysis could start: {reason}",
+            )
+            return False
+        if ready_file.exists():
+            log.info(f"[INGEST_READY] Sentinel found after {i}s — starting thread pipeline")
+            return True
+        time.sleep(_READY_POLL_INTERVAL)
+
+    log.error(f"[INGEST_TIMEOUT] Repo not ready after {_READY_WAIT_SECS}s (thread)")
+    progress_store.update_sync(
+        session_id,
+        status="error",
+        error_message=(
+            f"Ingestion timed out — repository was not ready after "
+            f"{_READY_WAIT_SECS}s. Please re-ingest the repository."
+        ),
+    )
+    return False
+
 
 def _run_pipeline_in_thread(session_id: str, session_dir: Path) -> None:
     from core.pipeline import PipelineError, run_analysis_pipeline
 
     log = logging.getLogger(f"codebase-intel.thread.{session_id[:8]}")
     log.info("Starting pipeline in thread fallback mode")
+
+    if not _wait_for_ingest_sentinel(session_id, session_dir):
+        return
 
     try:
         asyncio.run(run_analysis_pipeline(session_id, session_dir))
@@ -52,7 +100,7 @@ def _run_pipeline_in_thread(session_id: str, session_dir: Path) -> None:
             status="error",
             error_message="Out of memory. Try a smaller repository.",
         )
-    except Exception as exc:                
+    except Exception as exc:
         log.error(f"Unexpected error: {exc}", exc_info=True)
         progress_store.update_sync(
             session_id,

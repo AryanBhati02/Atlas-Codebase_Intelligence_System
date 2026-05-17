@@ -1,0 +1,44 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# Local session data (runtime, not source)
+sessions/
+
+# Test / benchmark outputs
+results/
+.pytest_cache/
+
+# Build artefacts
+*.egg-info/
+dist/
+build/
+
+# DB files
+*.db
+*.sqlite
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Git metadata
+.git/
+.gitignore
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/
+
+# Docs / non-runtime assets
+docs/

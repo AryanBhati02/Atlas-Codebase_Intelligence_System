@@ -33,9 +33,11 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
             )
 
     repo_dir = session_dir / "repo"
-    if not repo_dir.exists():
+
+    repo_is_empty = not repo_dir.exists() or not any(repo_dir.iterdir())
+    if repo_is_empty:
         raise PipelineError(
-            f"Repository directory not found for session {session_id}. "
+            f"Repository directory not found or is empty for session {session_id}. "
             "Ensure ingestion completed successfully before starting analysis.",
             error_code="REPO_NOT_FOUND",
         )
@@ -91,7 +93,6 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
         (session_dir / "graph.json").write_text, graph_json, "utf-8"
     )
 
-    # Free large intermediate results before function-graph stage
     parsed_count = len(parsed)
     
     del parsed, parsed_json, graph_data, graph_json
@@ -136,7 +137,6 @@ async def run_analysis_pipeline(session_id: str, session_dir: Path) -> None:
             FusionEngine().fuse, fn_graph, coedit_data
         )
 
-        # Serialize & save sequentially to avoid holding multiple copies
         fn_graph_json = await asyncio.to_thread(
             lambda: json.dumps(graph_to_json(fn_graph), ensure_ascii=False)
         )

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   FileEntry,
   ParsedFile,
@@ -8,7 +9,6 @@ import type {
 } from "../types";
 
 export interface SessionState {
-  
   sessionId: string | null;
   status: SessionStatus;
   progress: number;
@@ -93,61 +93,90 @@ const initialState: Omit<
   error: null,
 };
 
-export const useSessionStore = create<SessionState>((set) => ({
-  ...initialState,
+export const useSessionStore = create<SessionState>()(
+  persist(
+    (set) => ({
+      ...initialState,
 
-  setSession: (data) =>
-    set({
-      sessionId: data.session_id,
-      repoName: data.repo_name,
-      repoUrl: data.repo_name,
-      files: data.files,
-      totalFiles: data.total_files,
-      sourceType: data.source_type,
-      ingestedAt: data.ingested_at,
-      status: "parsing",
-      error: null,
+      setSession: (data) =>
+        set({
+          sessionId: data.session_id,
+          repoName: data.repo_name,
+          repoUrl: data.repo_name,
+          files: data.files,
+          totalFiles: data.total_files,
+          sourceType: data.source_type,
+          ingestedAt: data.ingested_at,
+          status: "parsing",
+          error: null,
+          isAnalyzed: false,
+          parsedFiles: [],
+          graphData: null,
+        }),
+
+      setSessionAndLoading: (data) =>
+        set({
+          sessionId: data.session_id,
+          repoName: data.repo_name,
+          repoUrl: data.repo_name,
+          files: data.files,
+          totalFiles: data.total_files,
+          sourceType: data.source_type,
+          ingestedAt: data.ingested_at,
+          status: "parsing",
+          error: null,
+          isLoading: false,
+          isAnalyzed: false,
+          parsedFiles: [],
+          graphData: null,
+        }),
+
+      setLoading: (loading) => set({ isLoading: loading }),
+      setError: (error) => set({ error, isLoading: false }),
+
+      reset: () => set(initialState),
+
+      setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
+      setAnalysisProgress: (progress) => set({ analysisProgress: progress }),
+      setAnalysisResult: (parsed, graph) =>
+        set({
+          parsedFiles: parsed,
+          graphData: graph,
+          isAnalyzed: true,
+          isAnalyzing: false,
+          analysisProgress: null,
+          status: "done",
+          progress: 100,
+        }),
+
+      setSelectedFile: (path) => {
+        set({ selectedFile: path, fileContent: null });
+        import("./aiStore").then(({ useAiStore }) => {
+          useAiStore.getState().clearFileAI();
+        }).catch(() => undefined);
+      },
+
+      setFileContent: (content) => set({ fileContent: content }),
     }),
-
-  setSessionAndLoading: (data) =>
-    set({
-      sessionId: data.session_id,
-      repoName: data.repo_name,
-      repoUrl: data.repo_name,
-      files: data.files,
-      totalFiles: data.total_files,
-      sourceType: data.source_type,
-      ingestedAt: data.ingested_at,
-      status: "parsing",
-      error: null,
-      isLoading: false,
-    }),
-
-  setLoading: (loading) => set({ isLoading: loading }),
-  setError: (error) => set({ error, isLoading: false }),
-
-  reset: () => set(initialState),
-
-  setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
-  setAnalysisProgress: (progress) => set({ analysisProgress: progress }),
-  setAnalysisResult: (parsed, graph) =>
-    set({
-      parsedFiles: parsed,
-      graphData: graph,
-      isAnalyzed: true,
-      isAnalyzing: false,
-      analysisProgress: null,
-      status: "done",
-      progress: 100,
-    }),
-
-  setSelectedFile: (path) => {
-    set({ selectedFile: path, fileContent: null });
-    
-    import("./aiStore").then(({ useAiStore }) => {
-      useAiStore.getState().clearFileAI();
-    }).catch(() => undefined);
-  },
-
-  setFileContent: (content) => set({ fileContent: content }),
-}));
+    {
+      name: "atlas-session-v1",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        sessionId: state.sessionId,
+        repoName: state.repoName,
+        repoUrl: state.repoUrl,
+        sourceType: state.sourceType,
+        files: state.files,
+        totalFiles: state.totalFiles,
+        ingestedAt: state.ingestedAt,
+      }),
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.warn("[sessionStore] Failed to hydrate from localStorage:", error);
+        } else if (state?.sessionId) {
+          console.log(`[sessionStore] Restored session ${state.sessionId} from localStorage`);
+        }
+      },
+    }
+  )
+);

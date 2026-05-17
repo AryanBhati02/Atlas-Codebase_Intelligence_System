@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from celery import Celery
 
@@ -6,10 +7,14 @@ _BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
 print("🔥 USING CELERY APP FROM:", __file__)
 print("🔥 BACKEND DIR:", _BACKEND_DIR)
 
+# REDIS_URL is injected by Docker Compose (redis://redis:6379/0).
+# Falls back to localhost so local `uvicorn` / `celery` runs still work.
+_REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 celery_app = Celery(
     "codebase_intel",
-    broker="redis://localhost:6379/0",
-    backend="redis://localhost:6379/0",
+    broker=_REDIS_URL,
+    backend=_REDIS_URL,
     include=["workers.tasks"],
 )
 

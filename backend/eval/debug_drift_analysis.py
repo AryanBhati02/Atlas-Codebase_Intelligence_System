@@ -41,7 +41,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("debug_drift")
 
-# ── re-use helpers from eval_drift ─────────────────────────────────────────
 from eval.eval_drift import (
     get_commits_with_python_changes,
     get_changed_line_ranges,
@@ -53,10 +52,6 @@ from eval.eval_drift import (
     _check_shallow_clone,
 )
 
-
-# ───────────────────────────────────────────────────────────────────────────
-# Statistical helpers
-# ───────────────────────────────────────────────────────────────────────────
 
 def _percentile(sorted_values: list[float], p: float) -> float:
     if not sorted_values:
@@ -115,11 +110,6 @@ def _threshold_sweep(distances: list[float], ground_truth_ids: set[str],
 def _find_optimal_threshold(sweep: list[dict]) -> dict:
     return max(sweep, key=lambda r: r["f1"])
 
-
-# ───────────────────────────────────────────────────────────────────────────
-# Core analysis per commit
-# ───────────────────────────────────────────────────────────────────────────
-
 def analyze_commit(
     detector,
     parser,
@@ -136,12 +126,10 @@ def analyze_commit(
     logger.info(f"ANALYZING COMMIT {commit_hash}")
     logger.info(f"{'='*60}")
 
-    # ── 1. Git diff ──────────────────────────────────────────────────────
     changed_ranges = get_changed_line_ranges(repo_path, commit_hash)
     logger.info(f"  Git diff: {len(changed_ranges)} changed files.")
     logger.info(f"  Diff keys (sample): {list(changed_ranges.keys())[:5]}")
 
-    # ── 2. Parse parent and current snapshots ────────────────────────────
     logger.info(f"  Checking out {commit_hash}^1 (parent)…")
     checkout_commit(repo_path, f"{commit_hash}^1")
     old_nodes = parser.parse_repository(repo_path)
@@ -157,12 +145,10 @@ def analyze_commit(
         return {"commit": commit_hash, "error": "zero_functions",
                 "old_count": len(old_nodes), "new_count": len(new_nodes)}
 
-    # ── 3. Path normalization ─────────────────────────────────────────────
     changed_ranges_norm = _normalize_diff_paths(changed_ranges, new_nodes, commit_hash)
     logger.info(
         f"  After path normalization: {len(changed_ranges_norm)} effective changed-file entries.")
 
-    # ── 4. Function ID intersection analysis ─────────────────────────────
     old_ids = {n.id for n in old_nodes}
     new_ids = {n.id for n in new_nodes}
     intersection = old_ids & new_ids
@@ -183,7 +169,6 @@ def analyze_commit(
             "Possible cause: file renamed, class refactor, or ID includes line number."
         )
 
-    # ── 5. Ground truth ───────────────────────────────────────────────────
     def _get_gt(nodes, ranges):
         changed_ids: set[str] = set()
         for node in nodes:
@@ -211,7 +196,6 @@ def analyze_commit(
         logger.warning(f"  Sample new nodes: {sample_nodes}")
         logger.warning(f"  Sample changed ranges: {sample_ranges}")
 
-    # ── 6. Embed + compute cosine distances ──────────────────────────────
     logger.info(f"  Embedding {len(intersection)} matched functions…")
     if not intersection:
         logger.warning("  Cannot compute cosine distances: intersection is empty.")
@@ -224,7 +208,6 @@ def analyze_commit(
             "error": "empty_intersection",
         }
 
-    # Build subsets to embed only matched functions
     old_matched = [n for n in old_nodes if n.id in intersection]
     new_matched = [n for n in new_nodes if n.id in intersection]
 
@@ -251,14 +234,12 @@ def analyze_commit(
         f"  Computed {len(distances)} cosine distances for matched function pairs."
     )
 
-    # ── 7. Distribution statistics ────────────────────────────────────────
     stats = _dist_stats(distances)
     logger.info(f"  Cosine distance distribution:")
     logger.info(f"    min={stats['min']}  max={stats['max']}  mean={stats['mean']}")
     logger.info(f"    p25={stats['p25']}  p50={stats['p50']}  p75={stats['p75']}")
     logger.info(f"    p90={stats['p90']}  p95={stats['p95']}")
 
-    # ── 8. Atlas predictions at given threshold ────────────────────────────
     predicted_drifted = {fid for fid, d in id_to_dist.items() if d > threshold}
     logger.info(
         f"  At threshold={threshold}: {len(predicted_drifted)}/{len(id_to_dist)} "
@@ -271,13 +252,11 @@ def analyze_commit(
             f"This is the primary cause of F1=0."
         )
 
-    # Also count "added" functions (in new but not old) — they are always flagged
     added_count = len(only_in_new)
     removed_count = len(only_in_old)
     logger.info(f"  Added (always flagged as drifted): {added_count}")
     logger.info(f"  Removed (in old only):              {removed_count}")
 
-    # ── 9. FP / FN analysis ───────────────────────────────────────────────
     tp = len(predicted_drifted & ground_truth_ids)
     fp = len(predicted_drifted - ground_truth_ids)
     fn = len(ground_truth_ids - predicted_drifted)
@@ -288,7 +267,6 @@ def analyze_commit(
     logger.info(f"  Atlas  @ threshold={threshold}: TP={tp} FP={fp} FN={fn} "
                 f"P={prec:.4f} R={rec:.4f} F1={f1:.4f}")
 
-    # Collect top false negatives: ground truth that Atlas missed
     fn_ids = list(ground_truth_ids - predicted_drifted)[:10]
     fn_details = []
     for fid in fn_ids:
@@ -296,7 +274,6 @@ def analyze_commit(
         fn_details.append({"id": fid, "cosine_dist": dist, "threshold": threshold})
         logger.info(f"  FN: {fid[:80]}  cosine_dist={dist!r}")
 
-    # Collect top false positives: Atlas flagged but not in ground truth
     fp_ids = list(predicted_drifted - ground_truth_ids)[:10]
     fp_details = []
     for fid in fp_ids:
@@ -304,7 +281,6 @@ def analyze_commit(
         fp_details.append({"id": fid, "cosine_dist": dist})
         logger.info(f"  FP: {fid[:80]}  cosine_dist={dist!r}")
 
-    # ── 10. Baseline predictions ──────────────────────────────────────────
     changed_files = set(changed_ranges_norm.keys())
     baseline_predicted = {n.id for n in new_nodes if n.file_path in changed_files}
     b_tp = len(baseline_predicted & ground_truth_ids)
@@ -316,7 +292,6 @@ def analyze_commit(
     logger.info(f"  Baseline (file-level): TP={b_tp} FP={b_fp} FN={b_fn} "
                 f"P={b_prec:.4f} R={b_rec:.4f} F1={b_f1:.4f}")
 
-    # ── 11. Threshold sensitivity sweep ────────────────────────────────────
     sweep = _threshold_sweep(distances, ground_truth_ids, id_to_dist)
     opt = _find_optimal_threshold(sweep)
     logger.info(
@@ -324,7 +299,6 @@ def analyze_commit(
         f"→ F1={opt['f1']} (TP={opt['tp']} FP={opt['fp']} FN={opt['fn']})"
     )
 
-    # Also show what thresholds give non-zero F1
     nonzero_f1 = [r for r in sweep if r["f1"] > 0]
     if nonzero_f1:
         logger.info(
@@ -334,7 +308,6 @@ def analyze_commit(
     else:
         logger.warning("  NO threshold gives F1>0 for this commit!")
 
-    # ── 12. Key diagnostic: distance of ground-truth functions ──────────────
     gt_in_intersection = [fid for fid in ground_truth_ids if fid in id_to_dist]
     gt_distances = [id_to_dist[fid] for fid in gt_in_intersection]
     gt_stats = _dist_stats(sorted(gt_distances))
@@ -360,7 +333,6 @@ def analyze_commit(
             f"{'[POSITIVE = model gives GT higher dist — good]' if separability > 0 else '[NEGATIVE = model cannot separate GT from non-GT — failure]'}"
         )
 
-    # ── 13. Save artifact ─────────────────────────────────────────────────
     artifact = {
         "commit": commit_hash,
         "old_count": len(old_nodes),
@@ -401,11 +373,6 @@ def analyze_commit(
     logger.info(f"  Artifact saved: {out_file}")
 
     return artifact
-
-
-# ───────────────────────────────────────────────────────────────────────────
-# Main
-# ───────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -466,14 +433,12 @@ def main() -> None:
                   else backend_root / args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Check for shallow clone ──────────────────────────────────────────
     if _check_shallow_clone(args.repo_path):
         logger.warning(
             "SHALLOW CLONE: git history is truncated. "
             "Results may be incomplete. Clone with full depth for best results."
         )
 
-    # ── Get commits ───────────────────────────────────────────────────────
     original_branch = get_current_branch(args.repo_path)
     logger.info(f"Repo: {args.repo_path}  branch={original_branch}")
     commits = get_commits_with_python_changes(args.repo_path, n=args.commits)
@@ -484,7 +449,6 @@ def main() -> None:
 
     logger.info(f"Will analyze {len(commits)} commits: {commits}")
 
-    # ── Per-commit analysis ────────────────────────────────────────────────
     commit_results: list[dict] = []
     for commit_hash in commits:
         try:
@@ -501,7 +465,6 @@ def main() -> None:
             except Exception:
                 pass
 
-    # ── Cross-commit summary ───────────────────────────────────────────────
     print("\n" + "="*70)
     print("  CROSS-COMMIT DIAGNOSTIC SUMMARY")
     print("="*70)
@@ -526,7 +489,6 @@ def main() -> None:
                 zero_gt += 1
             stats = r.get("cosine_dist_stats", {})
             if stats.get("mean") is not None:
-                # approximate: we can't recover individual distances from stats
                 pass
 
             gt_stats = r.get("gt_cosine_dist_stats", {})
@@ -567,7 +529,6 @@ def main() -> None:
             if avg_opt:
                 print(f"  Average OPTIMAL threshold: {avg_opt:.2f}")
 
-    # ── Hypotheses verdict ────────────────────────────────────────────────
     print("\n" + "="*70)
     print("  FAILURE MODE HYPOTHESES")
     print("="*70)
@@ -597,7 +558,6 @@ def main() -> None:
          for all matched pairs, regardless of actual code change.
     """)
 
-    # ── Save summary ──────────────────────────────────────────────────────
     summary = {
         "repo_path": args.repo_path,
         "threshold_used": args.threshold,

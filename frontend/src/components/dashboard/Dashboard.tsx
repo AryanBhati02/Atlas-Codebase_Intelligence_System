@@ -18,6 +18,7 @@ import { useSessionStore } from "../../store/sessionStore";
 import { useUiStore } from "../../store/uiStore";
 import { useThemeStore } from "../../store/themeStore";
 import { analyzeWithProgress, getAIStatus, getCommentCounts } from "../../api/api";
+import { API_BASE_URL } from "../../api/client";
 import type { AIStatusResponse } from "../../types";
 import { FileExplorer } from "./FileExplorer";
 import { GraphView } from "./GraphView";
@@ -26,6 +27,42 @@ import { SettingsPanel } from "../settings/SettingsPanel";
 import { CommandPalette } from "./CommandPalette";
 import { EmptyState } from "./EmptyState";
 import { SidebarEmptyState } from "./SidebarEmptyState";
+import { DebugOverlay } from "../DebugOverlay";
+import type { DebugState } from "../DebugOverlay";
+
+const stageLabels: Record<string, string> = {
+  pending: "Waiting to start…",
+  queued: "Queued for processing…",
+  starting: "Initializing…",
+  cloning: "Cloning repository…",
+  extracting: "Extracting archive…",
+  scanning: "Scanning files…",
+  parsing: "Parsing files",
+  scoring: "Scoring complexity",
+  graph: "Building dependency graph",
+  function_graph: "Building function graph",
+  saving: "Caching results",
+  done: "Complete!",
+  error: "Error",
+};
+
+const stageWeights: Record<string, { base: number; weight: number }> = {
+  pending: { base: 0, weight: 2 },
+  queued: { base: 2, weight: 3 },
+  starting: { base: 0, weight: 5 },
+  cloning: { base: 5, weight: 20 },
+  extracting: { base: 5, weight: 15 },
+  scanning: { base: 20, weight: 10 },
+  parsing: { base: 30, weight: 40 },
+  scoring: { base: 70, weight: 10 },
+  graph: { base: 80, weight: 8 },
+  function_graph: { base: 88, weight: 4 },
+  saving: { base: 92, weight: 5 },
+  done: { base: 100, weight: 0 },
+  error: { base: 0, weight: 0 },
+};
+
+let _pollingSessionId: string | null = null;
 
 export function Dashboard() {
   const sessionId = useSessionStore((s) => s.sessionId);
@@ -56,9 +93,7 @@ export function Dashboard() {
   useEffect(() => {
     let mx = 0, my = 0, cx = 0, cy = 0;
     let raf: number;
-
     const onMove = (e: MouseEvent) => { mx = e.clientX; my = e.clientY; };
-
     const tick = () => {
       cx += (mx - cx) * 0.12;
       cy += (my - cy) * 0.12;
@@ -68,7 +103,6 @@ export function Dashboard() {
       }
       raf = requestAnimationFrame(tick);
     };
-
     window.addEventListener("mousemove", onMove, { passive: true });
     raf = requestAnimationFrame(tick);
     return () => {
@@ -78,41 +112,60 @@ export function Dashboard() {
   }, []);
 
   const [backendToast, setBackendToast] = useState<string | null>(null);
+  const [debugState, setDebugState] = useState<DebugState>({
+    backendReachable: null,
+    sessionId: null,
+    pollingActive: false,
+    pollCount: 0,
+    lastStage: null,
+    lastCurrent: 0,
+    lastTotal: 0,
+    lastPollMs: null,
+    apiBase: API_BASE_URL,
+  });
 
   const pollStatus = useCallback(async () => {
     try {
       const status = await getAIStatus();
       setAIStatus(status);
     } catch {
-      
+
     }
   }, [setAIStatus]);
 
-  
   useEffect(() => {
     let cancelled = false;
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY_MS = 2_000;
 
-    const tryFetch = async (attempt: number): Promise<void> => {
-      if (cancelled) return;
-      try {
-        const status = await getAIStatus();
-        if (!cancelled) setAIStatus(status);
-      } catch {
+    const run = async () => {
+
+      getAIStatus()
+        .then((s) => { if (!cancelled) setAIStatus(s); })
+        .catch(() => { });
+
+      console.log(`[health] Checking ${API_BASE_URL}/api/health`);
+      for (let attempt = 1; attempt <= 3; attempt++) {
         if (cancelled) return;
-        if (attempt < MAX_RETRIES) {
-          await new Promise<void>((r) => setTimeout(r, RETRY_DELAY_MS));
-          await tryFetch(attempt + 1);
-        } else {
-          setBackendToast(
-            "Backend connection failed. Is the server running on port 8000?"
-          );
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/health`);
+          if (res.ok) {
+            console.log(`[health] Backend reachable (attempt ${attempt})`);
+            if (!cancelled) setDebugState((d) => ({ ...d, backendReachable: true }));
+            return;
+          }
+          console.warn(`[health] /api/health returned ${res.status} (attempt ${attempt})`);
+        } catch (err) {
+          console.warn(`[health] Fetch failed (attempt ${attempt}):`, err);
         }
+        if (attempt < 3) await new Promise<void>((r) => setTimeout(r, 2_000));
+      }
+      if (!cancelled) {
+        console.error("[health] Backend unreachable after 3 attempts");
+        setDebugState((d) => ({ ...d, backendReachable: false }));
+        setBackendToast("Backend connection failed. Is the server running on port 8000?");
       }
     };
 
-    void tryFetch(1);
+    void run();
     return () => { cancelled = true; };
   }, [setAIStatus]);
 
@@ -126,31 +179,56 @@ export function Dashboard() {
   const [progressTotal, setProgressTotal] = useState(0);
 
   useEffect(() => {
-    if (!sessionId || isAnalyzed) return;
+    if (!sessionId || isAnalyzed) {
+
+      if (!sessionId) _pollingSessionId = null;
+      return;
+    }
+
+    if (_pollingSessionId === sessionId) {
+      console.log(`[poll] Already polling ${sessionId.slice(0, 8)}, skipping duplicate mount`);
+      return;
+    }
+    _pollingSessionId = sessionId;
+
+    console.log(`[poll] Starting for session ${sessionId.slice(0, 8)}`);
 
     setAnalyzing(true);
     setProgressStage("starting");
     setProgressCurrent(0);
     setProgressTotal(0);
+    setDebugState((d) => ({ ...d, sessionId, pollingActive: true, pollCount: 0 }));
 
     let cancelled = false;
+    let localPollCount = 0;
 
-    const { promise, abort } = analyzeWithProgress(
-      sessionId,
-      (stage, current, total) => {
-        if (!cancelled) {
-          setProgressStage(stage);
-          setProgressCurrent(current);
-          setProgressTotal(total);
-          setAnalysisProgress({ stage, current, total });
-        }
-      }
-    );
+    const onProgress = (stage: string, current: number, total: number) => {
+      if (cancelled) return;
+      localPollCount++;
+      setProgressStage(stage);
+      setProgressCurrent(current);
+      setProgressTotal(total);
+      setAnalysisProgress({ stage, current, total });
+      setDebugState((d) => ({
+        ...d,
+        pollingActive: true,
+        pollCount: localPollCount,
+        lastStage: stage,
+        lastCurrent: current,
+        lastTotal: total,
+        lastPollMs: Date.now(),
+      }));
+    };
+
+    const { promise, abort } = analyzeWithProgress(sessionId, onProgress);
 
     promise
       .then((data) => {
         if (!cancelled) {
+          console.log(`[poll] setAnalysisResult — ${data.parsed_files.length} files`);
           setAnalysisResult(data.parsed_files, data.graph);
+          setDebugState((d) => ({ ...d, pollingActive: false, lastStage: "done" }));
+
           if (repoName) {
             const repoUrl =
               sourceType === "github"
@@ -167,19 +245,22 @@ export function Dashboard() {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(
-            "Analysis failed. " +
-              (err instanceof Error ? err.message : String(err))
-          );
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[poll] Analysis failed: ${msg}`);
+          setError("Analysis failed. " + msg);
           setAnalyzing(false);
+          setDebugState((d) => ({ ...d, pollingActive: false }));
         }
       });
 
     return () => {
+      console.log(`[poll] Cleanup for ${sessionId.slice(0, 8)}`);
       cancelled = true;
       abort();
+      _pollingSessionId = null;
+      setDebugState((d) => ({ ...d, pollingActive: false }));
     };
-    
+
   }, [sessionId, isAnalyzed]);
 
   useEffect(() => {
@@ -190,31 +271,11 @@ export function Dashboard() {
         const data = await getCommentCounts(sessionId);
         if (!cancelled) setCommentCounts(data.counts);
       } catch {
-        
+
       }
     })();
     return () => { cancelled = true; };
   }, [sessionId, setCommentCounts]);
-
-  const stageLabels: Record<string, string> = {
-    starting: "Initializing…",
-    parsing: "Parsing files",
-    scoring: "Scoring complexity",
-    graph: "Building dependency graph",
-    saving: "Caching results",
-    done: "Complete!",
-    error: "Error",
-  };
-
-  const stageWeights: Record<string, { base: number; weight: number }> = {
-    starting: { base: 0, weight: 5 },
-    parsing: { base: 5, weight: 65 },
-    scoring: { base: 70, weight: 10 },
-    graph: { base: 80, weight: 10 },
-    saving: { base: 90, weight: 5 },
-    done: { base: 100, weight: 0 },
-    error: { base: 0, weight: 0 },
-  };
 
   const getOverallPct = (): number => {
     const w = stageWeights[progressStage] ?? { base: 0, weight: 0 };
@@ -230,9 +291,9 @@ export function Dashboard() {
     () =>
       parsedFiles.length > 0
         ? (
-            parsedFiles.reduce((s, f) => s + f.complexity_score, 0) /
-            parsedFiles.length
-          ).toFixed(2)
+          parsedFiles.reduce((s, f) => s + f.complexity_score, 0) /
+          parsedFiles.length
+        ).toFixed(2)
         : "0",
     [parsedFiles]
   );
@@ -245,6 +306,7 @@ export function Dashboard() {
   if (isAnalyzing) {
     const overallPct = getOverallPct();
     const sourceLabel = sourceType === "zip" ? "ZIP Archive" : "Repository";
+    const stageLabel = stageLabels[progressStage] ?? progressStage;
     return (
       <div className="analyzing-overlay">
         <div
@@ -265,7 +327,7 @@ export function Dashboard() {
             className="text-lg font-semibold mb-2"
             style={{ color: "var(--text-primary)" }}
           >
-            Analyzing {sourceLabel}
+            {`Analyzing ${sourceLabel}`}
           </motion.h2>
 
           <motion.p
@@ -287,13 +349,14 @@ export function Dashboard() {
           </motion.p>
 
           <motion.p
+            key={stageLabel}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
             className="text-xs mb-4"
             style={{ color: "var(--text-tertiary)" }}
           >
-            {stageLabels[progressStage] ?? progressStage}
+            {stageLabel}
             {progressStage === "parsing" && progressTotal > 0 && (
               <span
                 className="ml-1 tabular-nums"
@@ -324,21 +387,28 @@ export function Dashboard() {
           </div>
 
           {(progressStage === "starting" ||
+            progressStage === "pending" ||
+            progressStage === "queued" ||
             (progressTotal === 0 && progressStage !== "done")) && (
-            <div className="flex gap-1.5 mt-3">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="w-1.5 h-1.5 rounded-full animate-bounce"
-                  style={{
-                    animationDelay: `${i * 0.15}s`,
-                    backgroundColor: "var(--bounce-dot-color)",
-                  }}
-                />
-              ))}
-            </div>
-          )}
+              <div className="flex gap-1.5 mt-3">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full animate-bounce"
+                    style={{
+                      animationDelay: `${i * 0.15}s`,
+                      backgroundColor: "var(--bounce-dot-color)",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
         </div>
+
+        {/* Debug overlay is still available during analysis */}
+        {(import.meta.env.DEV || import.meta.env.VITE_DEBUG_OVERLAY === "true") && (
+          <DebugOverlay state={debugState} />
+        )}
       </div>
     );
   }
@@ -347,7 +417,6 @@ export function Dashboard() {
     <div className="dashboard-layout">
       <div ref={glowRef} className="cursor-glow" />
 
-      {}
       <AnimatePresence>
         {backendToast && (
           <m.div
@@ -442,57 +511,30 @@ export function Dashboard() {
             <>
               <div
                 className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
-                style={{
-                  background: "var(--bg-input)",
-                  border: "1px solid var(--border-light)",
-                }}
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
               >
-                <FileCode2
-                  className="w-3 h-3"
-                  style={{ color: "var(--accent-cyan)", opacity: 0.7 }}
-                />
-                <span
-                  className="text-[10px] font-medium"
-                  style={{ color: "var(--text-tertiary)" }}
-                >
+                <FileCode2 className="w-3 h-3" style={{ color: "var(--accent-cyan)", opacity: 0.7 }} />
+                <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
                   {parsedFiles.length}
                 </span>
               </div>
 
               <div
                 className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
-                style={{
-                  background: "var(--bg-input)",
-                  border: "1px solid var(--border-light)",
-                }}
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
               >
-                <Layers
-                  className="w-3 h-3"
-                  style={{ color: "var(--accent-purple)", opacity: 0.7 }}
-                />
-                <span
-                  className="text-[10px] font-medium"
-                  style={{ color: "var(--text-tertiary)" }}
-                >
+                <Layers className="w-3 h-3" style={{ color: "var(--accent-purple)", opacity: 0.7 }} />
+                <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
                   {totalLoc.toLocaleString()} LOC
                 </span>
               </div>
 
               <div
                 className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
-                style={{
-                  background: "var(--bg-input)",
-                  border: "1px solid var(--border-light)",
-                }}
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
               >
-                <Activity
-                  className="w-3 h-3"
-                  style={{ color: "var(--accent-gold)", opacity: 0.7 }}
-                />
-                <span
-                  className="text-[10px] font-medium"
-                  style={{ color: "var(--text-tertiary)" }}
-                >
+                <Activity className="w-3 h-3" style={{ color: "var(--accent-gold)", opacity: 0.7 }} />
+                <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
                   {complexAvg}
                 </span>
               </div>
@@ -502,32 +544,20 @@ export function Dashboard() {
           <motion.button
             onClick={() =>
               window.dispatchEvent(
-                new KeyboardEvent("keydown", {
-                  key: "k",
-                  ctrlKey: true,
-                  bubbles: true,
-                })
+                new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })
               )
             }
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-colors duration-200"
-            style={{
-              color: "var(--text-tertiary)",
-              background: "var(--bg-input)",
-              border: "1px solid var(--border-light)",
-            }}
+            style={{ color: "var(--text-tertiary)", background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
             title="Command Palette (Ctrl+K)"
           >
             <Search className="w-3 h-3" />
             <span className="hidden sm:inline">Search</span>
             <kbd
               className="ml-0.5 px-1 py-0.5 rounded text-[8px] font-semibold"
-              style={{
-                background: "var(--bg-input)",
-                border: "1px solid var(--border-medium)",
-                color: "var(--text-tertiary)",
-              }}
+              style={{ background: "var(--bg-input)", border: "1px solid var(--border-medium)", color: "var(--text-tertiary)" }}
             >
               ⌘K
             </kbd>
@@ -538,21 +568,11 @@ export function Dashboard() {
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center p-1.5 rounded-lg transition-colors duration-200"
-            style={{
-              color: "var(--text-tertiary)",
-              background: "var(--bg-input)",
-              border: "1px solid var(--border-light)",
-            }}
-            title={
-              theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"
-            }
+            style={{ color: "var(--text-tertiary)", background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
+            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
             aria-label="Toggle theme"
           >
-            {theme === "dark" ? (
-              <Sun className="w-3.5 h-3.5" />
-            ) : (
-              <Moon className="w-3.5 h-3.5" />
-            )}
+            {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
           </motion.button>
 
           <motion.button
@@ -560,21 +580,11 @@ export function Dashboard() {
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center p-1.5 rounded-lg transition-colors duration-200"
-            style={{
-              color: "var(--text-tertiary)",
-              background: "var(--bg-input)",
-              border: "1px solid var(--border-light)",
-            }}
-            title={
-              isChatPanelOpen ? "Hide Chat Panel" : "Show Chat Panel"
-            }
+            style={{ color: "var(--text-tertiary)", background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
+            title={isChatPanelOpen ? "Hide Chat Panel" : "Show Chat Panel"}
             aria-label="Toggle chat panel"
           >
-            {isChatPanelOpen ? (
-              <PanelRightClose className="w-3.5 h-3.5" />
-            ) : (
-              <PanelRight className="w-3.5 h-3.5" />
-            )}
+            {isChatPanelOpen ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRight className="w-3.5 h-3.5" />}
           </motion.button>
 
           <motion.button
@@ -582,11 +592,7 @@ export function Dashboard() {
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.95 }}
             className="flex items-center p-1.5 rounded-lg transition-colors duration-200"
-            style={{
-              color: "var(--text-tertiary)",
-              background: "var(--bg-input)",
-              border: "1px solid var(--border-light)",
-            }}
+            style={{ color: "var(--text-tertiary)", background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
             title="Settings"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -598,11 +604,7 @@ export function Dashboard() {
               whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-colors duration-200"
-              style={{
-                color: "var(--text-tertiary)",
-                background: "var(--bg-input)",
-                border: "1px solid var(--border-light)",
-              }}
+              style={{ color: "var(--text-tertiary)", background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
             >
               <RotateCcw className="w-3 h-3" />
               New
@@ -611,13 +613,14 @@ export function Dashboard() {
         </div>
       </header>
 
-      <ResizablePanels
-        hasSession={hasSession}
-        isChatPanelOpen={isChatPanelOpen}
-      />
+      <ResizablePanels hasSession={hasSession} isChatPanelOpen={isChatPanelOpen} />
 
       <SettingsPanel />
       <CommandPalette />
+
+      {(import.meta.env.DEV || import.meta.env.VITE_DEBUG_OVERLAY === "true") && (
+        <DebugOverlay state={{ ...debugState, sessionId }} />
+      )}
     </div>
   );
 }
@@ -665,12 +668,9 @@ function ResizablePanels({
       if (side === "left") {
         setLeftWidth(Math.min(LEFT_MAX, Math.max(LEFT_MIN, startWidth + delta)));
       } else {
-        setRightWidth(
-          Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, startWidth - delta))
-        );
+        setRightWidth(Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, startWidth - delta)));
       }
     };
-
     const onMouseUp = () => {
       if (dragRef.current) {
         dragRef.current = null;
@@ -678,7 +678,6 @@ function ResizablePanels({
         document.body.style.userSelect = "";
       }
     };
-
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     return () => {
@@ -705,11 +704,7 @@ function ResizablePanels({
         className="panel panel-center"
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{
-          duration: 0.5,
-          ease: [0.25, 0.46, 0.45, 0.94],
-          delay: 0.1,
-        }}
+        transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94], delay: 0.1 }}
       >
         {hasSession ? <GraphView /> : <EmptyState />}
       </motion.div>
@@ -742,27 +737,15 @@ const AIStatusIndicator = React.memo(function AIStatusIndicator({
     return (
       <div
         className="stat-pill flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
-        style={{
-          background: "var(--bg-input)",
-          border: "1px solid var(--border-light)",
-        }}
+        style={{ background: "var(--bg-input)", border: "1px solid var(--border-light)" }}
       >
-        <div
-          className="w-1.5 h-1.5 rounded-full"
-          style={{ background: "var(--text-faint)" }}
-        />
-        <span
-          className="text-[10px] font-medium"
-          style={{ color: "var(--text-tertiary)" }}
-        >
-          AI
-        </span>
+        <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--text-faint)" }} />
+        <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>AI</span>
       </div>
     );
   }
 
-  const anyAPI =
-    status.groq || status.gemini || status.mistral || status.huggingface;
+  const anyAPI = status.groq || status.gemini || status.mistral || status.huggingface;
   const isLocal = status.ollama;
 
   if (isLocal && anyAPI) {
@@ -772,9 +755,7 @@ const AIStatusIndicator = React.memo(function AIStatusIndicator({
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping opacity-30" />
         </div>
-        <span className="text-[10px] text-emerald-400/80 font-medium">
-          AI Ready
-        </span>
+        <span className="text-[10px] text-emerald-400/80 font-medium">AI Ready</span>
       </div>
     );
   }

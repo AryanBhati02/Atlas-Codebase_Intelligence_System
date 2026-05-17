@@ -48,7 +48,6 @@ class DriftDetector:
         self.device = device
         self.encoder.eval()
         self.encoder.to(device)
-        # Match training: window_size=5, max_seq_len=64
         self._max_seq_len = 64
         self._window_size = 5
 

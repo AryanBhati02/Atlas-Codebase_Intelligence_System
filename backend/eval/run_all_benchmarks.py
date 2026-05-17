@@ -109,9 +109,7 @@ def main() -> None:
     }
     benchmarks_run: list[str] = []
 
-    # ====================================================================
     # 1. MRR@10
-    # ====================================================================
     print("\n" + "=" * 60)
     print("  [1/4]  MRR@10 Evaluation")
     print("=" * 60)
@@ -130,9 +128,7 @@ def main() -> None:
         logger.warning(f"MRR script not found: {mrr_script}")
         results["mrr"] = "SKIPPED — script not found"
 
-    # ====================================================================
     # 2. CodeSearchEval
-    # ====================================================================
     print("\n" + "=" * 60)
     print("  [2/4]  CodeSearchEval")
     print("=" * 60)
@@ -154,9 +150,7 @@ def main() -> None:
         logger.warning(f"CodeSearchEval script not found: {cse_script}")
         results["codesearcheval"] = "SKIPPED — script not found"
 
-    # ====================================================================
     # 3. Drift Detection
-    # ====================================================================
     print("\n" + "=" * 60)
     print("  [3/4]  Drift Detection")
     print("=" * 60)
@@ -181,9 +175,7 @@ def main() -> None:
         logger.warning(f"Drift script not found: {drift_script}")
         results["drift"] = "SKIPPED — script not found"
 
-    # ====================================================================
     # 4. SWE-Bench
-    # ====================================================================
     print("\n" + "=" * 60)
     print("  [4/4]  SWE-Bench")
     print("=" * 60)
@@ -211,9 +203,7 @@ def main() -> None:
         logger.warning(f"SWE-Bench script not found: {swe_script}")
         results["swebench"] = "SKIPPED — script not found"
 
-    # ====================================================================
     # Combined report
-    # ====================================================================
     results["benchmarks_run"] = benchmarks_run
 
     report_path = out_dir / "benchmark_report.json"
@@ -221,9 +211,7 @@ def main() -> None:
         json.dump(results, f, indent=2, ensure_ascii=False)
     logger.info(f"Combined report → {report_path}")
 
-    # ====================================================================
     # Markdown summary
-    # ====================================================================
     md_lines = [
         "# Atlas Benchmark Summary",
         "",
@@ -262,9 +250,7 @@ def main() -> None:
         f.write("\n".join(md_lines))
     logger.info(f"Markdown summary → {summary_path}")
 
-    # ====================================================================
     # Print table
-    # ====================================================================
     print("\n" + "=" * 60)
     print("  COMBINED BENCHMARK RESULTS")
     print("=" * 60)

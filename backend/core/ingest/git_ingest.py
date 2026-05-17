@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -8,11 +9,13 @@ from models.schemas import FileEntry
 
 logger = logging.getLogger("codebase-intel.ingest.git")
 
+
 class GitIngestError(Exception):
 
     def __init__(self, message: str, error_code: str):
         super().__init__(message)
         self.error_code = error_code
+
 
 def validate_github_url(url: str) -> bool:
     url = url.strip().lower()
@@ -26,6 +29,7 @@ def validate_github_url(url: str) -> bool:
     path_parts = url.split("github.com/")[-1].strip("/").split("/")
     return len(path_parts) >= 2 and all(part for part in path_parts[:2])
 
+
 def extract_repo_name(url: str) -> str:
     url = url.rstrip("/")
     if url.endswith(".git"):
@@ -35,22 +39,41 @@ def extract_repo_name(url: str) -> str:
         return f"{parts[-2]}/{parts[-1]}"
     return parts[-1] if parts else "unknown"
 
-def _do_clone_sync(url: str, repo_dir: Path, depth: int = 100) -> None:
+
+def _do_clone_sync(url: str, repo_dir: Path, depth: int = 1) -> None:
+    abs_repo_dir = repo_dir.resolve()
+
+    target_exists = abs_repo_dir.exists()
+    target_contents = list(abs_repo_dir.iterdir()) if target_exists else []
+    logger.info(
+        "[CLONE_PROCESS_START] url=%s  target=%s  "
+        "target_exists=%s  target_file_count=%d",
+        url, abs_repo_dir, target_exists, len(target_contents),
+    )
+
+    if target_exists:
+        logger.info(
+            "[CLONE_PROCESS_START] Removing existing target dir before clone: %s",
+            abs_repo_dir,
+        )
+        shutil.rmtree(abs_repo_dir)
+
     cmd = [
         "git", "clone",
         f"--depth={depth}",
         "--single-branch",
         "--no-tags",
         url,
-        str(repo_dir),
+        str(abs_repo_dir),
     ]
-    logger.info(f"Cloning {url} (depth={depth})")
+    logger.info("[CLONE_PROCESS_START] cmd=%s", " ".join(cmd))
 
+    proc = None
     try:
-        result = subprocess.run(
+        proc = subprocess.run(
             cmd,
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             timeout=120,
         )
     except subprocess.TimeoutExpired:
@@ -66,9 +89,17 @@ def _do_clone_sync(url: str, repo_dir: Path, depth: int = 100) -> None:
             error_code="GIT_NOT_INSTALLED",
         )
 
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        lower = stderr.lower()
+    stdout_text = proc.stdout.decode("utf-8", errors="replace").strip()
+    stderr_text = proc.stderr.decode("utf-8", errors="replace").strip()
+
+    logger.info("[CLONE_PROCESS_EXIT] returncode=%d", proc.returncode)
+    if stdout_text:
+        logger.info("[CLONE_STDOUT] %s", stdout_text[:2000])
+    if stderr_text:
+        logger.info("[CLONE_STDERR] %s", stderr_text[:2000])
+
+    if proc.returncode != 0:
+        lower = stderr_text.lower()
         if "not found" in lower or "repository not found" in lower or "404" in lower:
             raise GitIngestError(
                 f"Repository not found: {url}. "
@@ -87,11 +118,31 @@ def _do_clone_sync(url: str, repo_dir: Path, depth: int = 100) -> None:
                 error_code="NETWORK_ERROR",
             )
         raise GitIngestError(
-            f"Git clone failed (exit {result.returncode}): {stderr[:300]}",
+            f"Git clone failed (exit {proc.returncode}): {stderr_text[:300]}",
             error_code="CLONE_FAILED",
         )
 
-    logger.info(f"Clone complete → {repo_dir}")
+    # Verify the clone actually produced files before returning.
+    if not abs_repo_dir.exists():
+        raise GitIngestError(
+            f"Clone exit 0 but target dir missing: {abs_repo_dir}",
+            error_code="CLONE_EMPTY",
+        )
+
+    cloned_files = [p for p in abs_repo_dir.rglob("*") if p.is_file()]
+    file_count = len(cloned_files)
+    logger.info(
+        "[CLONE_PROCESS_EXIT] Clone verified: %d files in %s",
+        file_count, abs_repo_dir,
+    )
+
+    if file_count == 0:
+        raise GitIngestError(
+            f"Clone exit 0 but repository is empty at {abs_repo_dir}. "
+            "The repository may contain no files.",
+            error_code="CLONE_EMPTY",
+        )
+
 
 async def clone_repository_async(
     url: str,
@@ -111,6 +162,7 @@ async def clone_repository_async(
 
     files = await asyncio.to_thread(scan_directory, repo_dir)
     return repo_name, files
+
 
 def clone_repository(url: str, session_dir: Path) -> tuple[str, list[FileEntry]]:
     url = url.strip()

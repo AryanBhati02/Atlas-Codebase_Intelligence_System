@@ -1,27 +1,66 @@
+
+# Atlas Backend – complete runtime requirements
+
+# Web framework & server
 fastapi==0.115.0
 uvicorn==0.30.6
 python-multipart==0.0.9
-gitpython==3.1.43
+
+#Data validation
 pydantic==2.11.2
+
+# HTTP client
 httpx==0.28.1
+
+#Git integration
+gitpython==3.1.43
+
+#Task queue
 celery==5.3.4
 redis==5.0.1
 
+#Code parsing (tree-sitter)
 tree-sitter==0.21.3
 tree-sitter-python==0.21.0
 tree-sitter-javascript==0.21.4
 tree-sitter-typescript==0.21.2
+
+#Graph analysis
 networkx==3.3
 
-# NOTE: Install PyTorch with CUDA 11.8 support FIRST (before the rest):
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-# Then install torch-geometric:
-#   pip install torch_geometric
-#   pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv \
-#       -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
-# Then install the remaining deps normally:
-#   pip install -r requirements.txt
-numpy>=1.26.0
-scipy>=1.12.0
-datasets>=2.18.0          # HuggingFace datasets — CodeSearchNet loader
+# Scientific Python core
+# Hard-pinned to 1.x: torch 2.2.x and PyG are compiled against NumPy 1.x ABI.
+# NumPy 2.x breaks _ARRAY_API and causes "compiled using NumPy 1.x" crash.
+numpy==1.26.4
+scipy>=1.12.0,<2
+
+#Vector database client
+# Required by core/retrieval/qdrant_store.py and training/umap_viz.py
+qdrant-client>=1.9.0
+
+#BM25 lexical retrieval
+# Required by core/retrieval/bm25_index.py
+rank_bm25>=0.2.2
+
+# PyTorch (CPU)
+# Installed explicitly in Dockerfile with CPU index URL.
+# Listed here for reference / local venv installs.
+# torch torchvision torchaudio   (see Dockerfile)
+
+#PyTorch Geometric (GNN)
+# Required by: core/model/function_encoder.py, core/model/dataset.py,
+#              core/retrieval/agentic_retrieval.py, core/drift/drift_detector.py,
+#              training/index_repo.py, eval/eval_codesearcheval.py
+# Installed from the PyG CPU wheel index in the Dockerfile.
+# torch_geometric               (see Dockerfile)
+
+#HuggingFace ecosystem
+datasets>=2.18.0          # CodeSearchNet loader
 huggingface-hub>=0.22.0   # required by datasets
+
+# UMAP visualisation
+# Required by training/umap_viz.py
+umap-learn>=0.5.6
+
+#Plotting (training/umap_viz.py)
+matplotlib>=3.8.0

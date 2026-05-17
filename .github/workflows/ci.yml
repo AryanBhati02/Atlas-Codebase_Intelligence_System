@@ -60,10 +60,7 @@ jobs:
       - name: Verify parser imports
         working-directory: backend
         run: |
-          python -c "
-           from core.parser.tree_sitter_parser import TreeSitterParser
-          print('✅ TreeSitterParser imports OK')
-          "
+          python -c "from core.parser.tree_sitter_parser import TreeSitterParser; print('✅ TreeSitterParser imports OK')"
 
       - name: Run tests
         working-directory: backend

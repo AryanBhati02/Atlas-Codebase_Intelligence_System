@@ -30,7 +30,7 @@ logger = logging.getLogger("atlas.mcp")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stderr,  # MCP uses stdout for the protocol; log to stderr
+    stream=sys.stderr,
 )
 
 mcp = FastMCP("Atlas — Behavioral Code Intelligence")
@@ -337,7 +337,7 @@ async def get_hot_paths(top_k: int = 10) -> str:
         fan_in = graph.in_degree(node_id)
         fan_out = graph.out_degree(node_id)
         complexity = int(node_data.get("complexity", 0))
-        # Impact: heavy fan-in + high complexity = highest risk
+ 
         impact = fan_in * 2 + complexity + fan_out * 0.5
         scored.append(
             {

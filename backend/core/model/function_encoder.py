@@ -84,10 +84,6 @@ class FunctionEncoder(nn.Module):
         
         self.use_checkpointing: bool = True
 
-    
-    
-    
-
     def forward(
         self,
         x: torch.Tensor,           
@@ -126,10 +122,6 @@ class FunctionEncoder(nn.Module):
         h = self.norm(h)
         return F.normalize(h, dim=-1)   
 
-    
-    
-    
-
     def _gat_forward(
         self,
         h: torch.Tensor,
@@ -141,12 +133,6 @@ class FunctionEncoder(nn.Module):
         h = F.dropout(h, p=0.1, training=self.training)
         h = self.gat2(h, edge_index, edge_attr=edge_attr)           
         return h
-
-
-
-
-
-
 
 def infonce_loss(
     z_a: torch.Tensor,

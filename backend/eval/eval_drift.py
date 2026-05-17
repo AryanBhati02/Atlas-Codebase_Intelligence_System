@@ -388,7 +388,6 @@ class DriftEvaluator:
                 # --- Path normalization: align git-diff keys with node.file_path ---
                 changed_ranges = _normalize_diff_paths(changed_ranges, new_nodes, commit_hash)
 
-                # Ground truth
                 ground_truth_ids = self._get_changed_function_ids(new_nodes, changed_ranges)
                 logger.info(
                     f"  Ground truth: {len(ground_truth_ids)} functions overlap with diff "
@@ -406,17 +405,13 @@ class DriftEvaluator:
                     skipped_no_groundtruth += 1
                     continue
 
-                # Atlas predictions
-                # NOTE: 'added' functions are included because a newly-added function
-                # that overlaps the diff's changed lines IS a true positive ground-truth
-                # function. Excluding 'added' silently removes valid TP hits.
                 drift_results = self.detector.detect_drift(old_nodes, new_nodes, threshold=threshold)
                 predicted_drifted = {
                     r.function_id
                     for r in drift_results
                     if r.is_drifted and r.drift_type in ("semantic", "structural", "added")
                 }
-                # Debug: break down by drift type and show distance distribution
+
                 type_counts: dict[str, int] = {}
                 dist_values: list[float] = []
                 for r in drift_results:

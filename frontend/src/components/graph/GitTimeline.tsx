@@ -23,7 +23,7 @@ export function GitTimeline() {
     commitDiff,
     isCommitDiffLoading,
     coverageData,
-    isCoverageLoading,
+    isCoverageLoading: _isCoverageLoading,
     showCoverage,
     setTimelineData,
     setTimelineLoading,

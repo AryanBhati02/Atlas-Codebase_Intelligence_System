@@ -41,25 +41,31 @@ export interface CancellableAnalysis {
   abort: () => void;
 }
 
+const ANALYSIS_TIMEOUT_MS = 600_000; // 10 minutes
+
 export function analyzeWithProgress(
   sessionId: string,
   onProgress: (stage: string, current: number, total: number) => void
 ): CancellableAnalysis {
   let aborted = false;
 
-  const ANALYSIS_TIMEOUT_MS = 120_000;
-
   const promise = new Promise<AnalyzeResponse>((resolve, reject) => {
     const timeoutId = setTimeout(() => {
       if (!aborted) {
         aborted = true;
-        reject(new Error("Clone timed out — try again."));
+        console.warn(`[poll:${sessionId.slice(0, 8)}] Frontend timeout after ${ANALYSIS_TIMEOUT_MS / 1000}s`);
+        reject(new Error(
+          "Analysis timed out after 10 minutes. The repository may be very large. " +
+          "Check if the backend is still running and try again."
+        ));
       }
     }, ANALYSIS_TIMEOUT_MS);
 
     void (async () => {
       try {
-        await client.post(`/api/analyze/start/${sessionId}`);
+        console.log(`[poll:${sessionId.slice(0, 8)}] Calling /analyze/start`);
+        const startRes = await client.post(`/api/analyze/start/${sessionId}`);
+        console.log(`[poll:${sessionId.slice(0, 8)}] Start response:`, startRes.data);
 
         if (aborted) {
           clearTimeout(timeoutId);
@@ -68,11 +74,13 @@ export function analyzeWithProgress(
         }
 
         let consecutiveErrors = 0;
-        const MAX_CONSECUTIVE_ERRORS = 3;
+        let pollCount = 0;
+        let backoffMs = 500;
 
         while (!aborted) {
-          await new Promise<void>((r) => setTimeout(r, 500));
+          await new Promise<void>((r) => setTimeout(r, backoffMs));
           if (aborted) break;
+          pollCount++;
 
           try {
             const { data: prog } = await client.get<{
@@ -81,33 +89,51 @@ export function analyzeWithProgress(
               total: number;
               done: boolean;
               error: string | null;
-            }>(`/api/analyze/progress/${sessionId}`);
+            }>(`/api/analyze/progress/${sessionId}`, {
+              _suppressNetworkToast: true,
+            } as import("axios").AxiosRequestConfig & { _suppressNetworkToast?: boolean });
 
             consecutiveErrors = 0;
+            backoffMs = 500;
+
+            console.log(
+              `[poll:${sessionId.slice(0, 8)} #${pollCount}]`,
+              `stage=${prog.stage}`,
+              `${prog.current}/${prog.total}`,
+              `done=${prog.done}`
+            );
+
             onProgress(prog.stage, prog.current, prog.total);
 
             if (prog.error) {
               clearTimeout(timeoutId);
+              console.error(`[poll:${sessionId.slice(0, 8)}] Backend error: ${prog.error}`);
               reject(new Error(prog.error));
               return;
             }
 
             if (prog.done) {
               clearTimeout(timeoutId);
-              const res = await client.post<AnalyzeResponse>(
-                `/api/analyze/${sessionId}`
+              console.log(`[poll:${sessionId.slice(0, 8)}] Done — fetching results`);
+              const res = await client.post<AnalyzeResponse>(`/api/analyze/${sessionId}`);
+              console.log(
+                `[poll:${sessionId.slice(0, 8)}] Results received:`,
+                `${res.data.total_files} files,`,
+                `${res.data.graph?.nodes?.length ?? 0} graph nodes`
               );
               resolve(res.data);
               return;
             }
           } catch (pollErr: unknown) {
             consecutiveErrors++;
-            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-              clearTimeout(timeoutId);
-              reject(new Error("Lost connection to analysis server."));
-              return;
-            }
-            await new Promise<void>((r) => setTimeout(r, 1_000));
+
+            backoffMs = Math.min(backoffMs * 2, 8_000);
+            console.warn(
+              `[poll:${sessionId.slice(0, 8)} #${pollCount}]`,
+              `Network error #${consecutiveErrors} (next retry in ${backoffMs}ms):`,
+              pollErr instanceof Error ? pollErr.message : pollErr
+            );
+            await new Promise<void>((r) => setTimeout(r, 500));
           }
         }
 
@@ -117,12 +143,19 @@ export function analyzeWithProgress(
         }
       } catch (err: unknown) {
         clearTimeout(timeoutId);
+        console.error(`[poll:${sessionId.slice(0, 8)}] Fatal error:`, err);
         reject(err);
       }
     })();
   });
 
-  return { promise, abort: () => { aborted = true; } };
+  return {
+    promise,
+    abort: () => {
+      console.log(`[poll:${sessionId.slice(0, 8)}] Aborted`);
+      aborted = true;
+    },
+  };
 }
 
 

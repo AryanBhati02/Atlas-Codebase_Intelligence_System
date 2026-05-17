@@ -5,13 +5,15 @@ import { useSessionStore } from "../store/sessionStore";
 declare module "axios" {
   interface InternalAxiosRequestConfig {
     _retryCount?: number;
+    _suppressNetworkToast?: boolean;
   }
 }
 
-const BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ??
-  (import.meta.env.VITE_API_BASE as string | undefined) ??
+export const API_BASE_URL =
+  (import.meta.env.VITE_API_URL as string | undefined) ||
   "http://localhost:8000";
+
+const BASE_URL = API_BASE_URL;
 
 export const client = axios.create({
   baseURL: BASE_URL,
@@ -41,7 +43,6 @@ client.interceptors.response.use(
     const config = error.config;
 
     if (status === 401) {
-
       try {
         const [{ useSettingsStore }, { useUiStore }] = await Promise.all([
           import("../store/settingsStore"),
@@ -50,7 +51,7 @@ client.interceptors.response.use(
         useSettingsStore.getState().clearApiKeys();
         useUiStore.getState().setSettingsPanelOpen(true);
       } catch {
-
+        // ignore
       }
       return Promise.reject(error);
     }
@@ -73,7 +74,11 @@ client.interceptors.response.use(
     }
 
     if (!error.response) {
-      dispatchToast("Cannot reach backend — is it running?");
+      if (!config?._suppressNetworkToast) {
+        dispatchToast("Cannot reach backend — is it running?");
+      } else {
+        console.warn("[API] Silent network error on", config?.url, error.message);
+      }
       return Promise.reject(error);
     }
 

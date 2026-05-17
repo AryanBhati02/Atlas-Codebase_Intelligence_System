@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
+const API_BASE =
+  ((import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000") + "/api";
 const MAX_RETRIES = 3;
 
 export interface StreamCallbacks {

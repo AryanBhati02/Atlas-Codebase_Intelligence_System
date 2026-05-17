@@ -61,7 +61,7 @@ jobs:
         working-directory: backend
         run: |
           python -c "
-          from core.parser.ts_parser import TreeSitterParser
+           from core.parser.tree_sitter_parser import TreeSitterParser
           print('✅ TreeSitterParser imports OK')
           "
 

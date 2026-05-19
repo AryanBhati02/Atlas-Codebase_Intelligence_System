@@ -74,11 +74,11 @@ def _do_clone_sync(url: str, repo_dir: Path, depth: int = 1) -> None:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=120,
+            timeout=1800,
         )
     except subprocess.TimeoutExpired:
         raise GitIngestError(
-            f"Git clone timed out after 120 s for {url}. "
+            f"Git clone timed out after 1800 s for {url}. "
             "Try a smaller or less active repository.",
             error_code="CLONE_TIMEOUT",
         )

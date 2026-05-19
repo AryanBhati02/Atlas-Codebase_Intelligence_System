@@ -5,7 +5,7 @@ import { ingestGitHub } from "../../api/ingest";
 import { useSessionStore } from "../../store/sessionStore";
 import { useUiStore } from "../../store/uiStore";
 
-const CLONE_TIMEOUT_MS = 120_000;
+const CLONE_TIMEOUT_MS = 600_000;
 
 export function GitHubInput() {
   const [url, setUrl] = useState("");
@@ -28,18 +28,20 @@ export function GitHubInput() {
     setError(null);
     setSessionError(null);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CLONE_TIMEOUT_MS);
-
     try {
-      const data = await ingestGitHub(url.trim(), controller.signal);
-      clearTimeout(timeoutId);
+      const data = await ingestGitHub(url.trim());
       setSessionAndLoading(data);
       setShowIngestModal(false);
     } catch (err: unknown) {
-      clearTimeout(timeoutId);
       setIsLoading(false);
-
+      if (
+        err instanceof Error &&
+        (err.message.toLowerCase() === "canceled" ||
+          err.message.toLowerCase() === "cancelled")
+      ) {
+        setError("Clone operation was cancelled or timed out.");
+        return;
+      }
       // AbortError from our 120s timeout
       if (err instanceof DOMException && err.name === "AbortError") {
         setError("Clone timed out. The repository might be too large or the network is slow.");
@@ -65,7 +67,10 @@ export function GitHubInput() {
         } else {
           setError(`Server error (${status ?? "unknown"}). Please try again.`);
         }
-      } else if (err && typeof err === "object" && "request" in err) {
+      } else if (err &&
+        typeof err === "object" &&
+        "request" in err &&
+        !(err instanceof DOMException)) {
 
         setError("Cannot reach the server. Is the backend running on port 8000?");
       } else if (

@@ -128,3 +128,13 @@ docker-compose.override.yml
 docs/_build/
 docs/site/
 site/
+
+e2e/test-results/
+playwright-report/
+blob-report/
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+node_modules/
+*.log
